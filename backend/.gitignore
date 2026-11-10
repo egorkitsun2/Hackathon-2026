@@ -1,0 +1,16 @@
+node_modules/
+.wrangler/
+.dev.vars
+.dev.vars.*
+.env
+.env.*
+dist/
+*.log
+worker-configuration.d.ts
+
+data/
+.local/
+*.sqlite
+*.sqlite-*
+*.db
+*.db-*
