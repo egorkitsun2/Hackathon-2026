@@ -1,7 +1,7 @@
 # Team Voice — API contract v0.2
 
-Status: agreed contract for frontend/backend coordination; endpoints other than
-GET /api/v1/health are **not yet implemented**.
+Status: implemented backend MVP on Node.js + Hono and SQLite.
+The agreed endpoint and JSON contracts are unchanged.
 
 Base path: /api/v1. Request and response bodies are JSON. Dates are UTC ISO 8601
 strings. User sessions are sent using same-origin HttpOnly cookies. UI labels
@@ -291,7 +291,7 @@ production responses.
 - Normalize Kazakhstan phone numbers to +7XXXXXXXXXX.
 - No public signup, no SMS in the MVP. Phone is a login, not proof of possession.
 - Store slow, salted password hashes; never raw passwords.
-- Store only hashes of 32-byte random session tokens in D1.
+- Store only hashes of 32-byte random session tokens in SQLite.
 - HttpOnly, Secure, SameSite=Lax cookies in production; 8-hour expiry.
 - Enforce exact trusted Origin for state-changing authenticated requests.
 - Do not enable permissive cross-origin credential requests.

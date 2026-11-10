@@ -7,3 +7,10 @@ node_modules/
 dist/
 *.log
 worker-configuration.d.ts
+
+data/
+.local/
+*.sqlite
+*.sqlite-*
+*.db
+*.db-*
