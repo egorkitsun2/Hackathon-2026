@@ -1,11 +1,12 @@
 import { Hono } from 'hono'
-import type { MiddlewareHandler } from 'hono'
+import type { Context, MiddlewareHandler } from 'hono'
 import { bodyLimit } from 'hono/body-limit'
 import { getCookie, setCookie } from 'hono/cookie'
 import { getConnInfo } from '@hono/node-server/conninfo'
 import type { DatabaseSync } from 'node:sqlite'
 import { randomBytes } from 'node:crypto'
 import { transaction } from './db.js'
+import { accountProfile, employeeView, newPassword, temporaryPassword, userId } from './accounts.js'
 import { allowLogin, digest, hashPassword, newSessionToken, normalizePhone, SESSION_SECONDS, verifyPassword } from './security.js'
 import { ApiError, invalid, jsonBody, pagination, text, ticketId } from './validation.js'
 import type { AppEnv, Role, Ticket, TicketStatus, User } from './types.js'
@@ -30,6 +31,18 @@ export async function createApp({ db, origin, production = false }: AppOptions) 
   // Unknown users pay the same Argon2 cost as known users. Never store a dummy password in Git.
   const dummyHash = await hashPassword(randomBytes(32).toString('base64url'))
   let activeVerifications = 0
+  async function passwordWork<T>(work: () => Promise<T>): Promise<T> {
+    if (activeVerifications >= 2) throw new ApiError(503, 'SERVICE_UNAVAILABLE', 'Please retry shortly')
+    activeVerifications++
+    try { return await work() } finally { activeVerifications-- }
+  }
+  function clientIp(c: Context): string {
+    if (c.env && typeof c.env === 'object' && 'incoming' in c.env) return getConnInfo(c).remote.address ?? 'unknown'
+    return 'local'
+  }
+  function passwordChangeHeader(c: Context, user: User) {
+    c.header('X-Password-Change-Required', user.must_change_password ? 'true' : 'false')
+  }
 
   app.use('/api/*', async (c, next) => {
     c.header('Cache-Control', 'no-store')
@@ -43,16 +56,22 @@ export async function createApp({ db, origin, production = false }: AppOptions) 
   app.use('/api/*', bodyLimit({ maxSize: 32768,
     onError: (c) => c.json({ error: { code: 'VALIDATION_ERROR', message: 'Request body too large' } }, 400) }))
 
-  const authenticated = (role?: Role): MiddlewareHandler<AppEnv> => async (c, next) => {
-    const token = getCookie(c, cookieName)
-    if (!token || !/^[A-Za-z0-9_-]{43}$/.test(token)) throw new ApiError(401, 'UNAUTHORIZED', 'Authentication required')
-    const tokenHash = digest(token)
+  function sessionUser(tokenHash: string, role?: Role, allowPasswordChange = false): User {
     const user = db.prepare(`SELECT u.* FROM sessions s JOIN users u ON u.id = s.user_id
       WHERE s.token_hash = ? AND s.expires_at > ?`).get(tokenHash, new Date().toISOString()) as unknown as User | undefined
     if (!user) throw new ApiError(401, 'UNAUTHORIZED', 'Authentication required')
     if (!user.is_active) throw new ApiError(403, 'ACCOUNT_DISABLED', 'Account disabled')
     if (role && user.role !== role) throw new ApiError(403, 'FORBIDDEN', 'Access denied')
-    c.set('user', user)
+    if (!allowPasswordChange && user.must_change_password) {
+      throw new ApiError(403, 'PASSWORD_CHANGE_REQUIRED', 'Change your password before continuing')
+    }
+    return user
+  }
+  const authenticated = (role?: Role, allowPasswordChange = false): MiddlewareHandler<AppEnv> => async (c, next) => {
+    const token = getCookie(c, cookieName)
+    if (!token || !/^[A-Za-z0-9_-]{43}$/.test(token)) throw new ApiError(401, 'UNAUTHORIZED', 'Authentication required')
+    const tokenHash = digest(token)
+    c.set('user', sessionUser(tokenHash, role, allowPasswordChange))
     c.set('tokenHash', tokenHash)
     await next()
   }
@@ -75,42 +94,115 @@ export async function createApp({ db, origin, production = false }: AppOptions) 
       return invalid({ password: 'INVALID_PASSWORD' })
     }
     // Use the socket peer only; client-supplied forwarding headers are not trusted.
-    let ip = 'local'
-    if (c.env && typeof c.env === 'object' && 'incoming' in c.env) ip = getConnInfo(c).remote.address ?? 'unknown'
+    const ip = clientIp(c)
     if (!allowLogin(db, phone, ip)) {
       c.header('Retry-After', '900')
       throw new ApiError(429, 'RATE_LIMITED', 'Too many login attempts')
     }
-    if (activeVerifications >= 2) throw new ApiError(503, 'SERVICE_UNAVAILABLE', 'Please retry shortly')
-    activeVerifications++
-    let user: User | undefined
-    let valid: boolean
-    try {
-      user = db.prepare('SELECT * FROM users WHERE phone = ?').get(phone) as unknown as User | undefined
-      valid = await verifyPassword(user?.password_hash ?? dummyHash, body.password)
-    } finally { activeVerifications-- }
+    const user = db.prepare('SELECT * FROM users WHERE phone = ?').get(phone) as unknown as User | undefined
+    const valid = await passwordWork(() => verifyPassword(user?.password_hash ?? dummyHash, body.password as string))
     if (!valid || !user) throw new ApiError(401, 'INVALID_CREDENTIALS', 'Invalid phone or password')
-    const current = db.prepare('SELECT * FROM users WHERE id = ?').get(user.id) as unknown as User | undefined
-    if (!current || current.password_hash !== user.password_hash) throw new ApiError(401, 'INVALID_CREDENTIALS', 'Invalid phone or password')
-    if (!current.is_active) throw new ApiError(403, 'ACCOUNT_DISABLED', 'Account disabled')
     const token = newSessionToken()
     const now = new Date()
-    transaction(db, () => {
+    const current = transaction(db, () => {
+      // Password/activation may change while Argon2 runs or in another process.
+      const current = db.prepare('SELECT * FROM users WHERE id = ?').get(user.id) as unknown as User | undefined
+      if (!current || current.password_hash !== user.password_hash) throw new ApiError(401, 'INVALID_CREDENTIALS', 'Invalid phone or password')
+      if (!current.is_active) throw new ApiError(403, 'ACCOUNT_DISABLED', 'Account disabled')
       db.prepare('DELETE FROM sessions WHERE expires_at <= ?').run(now.toISOString())
       const previous = getCookie(c, cookieName)
       if (previous) db.prepare('DELETE FROM sessions WHERE token_hash = ?').run(digest(previous))
       db.prepare('INSERT INTO sessions (token_hash, user_id, created_at, expires_at) VALUES (?, ?, ?, ?)')
         .run(digest(token), current.id, now.toISOString(), new Date(now.getTime() + SESSION_SECONDS * 1000).toISOString())
+      return current
     })
     setCookie(c, cookieName, token, { ...cookieOptions, maxAge: SESSION_SECONDS, expires: new Date(now.getTime() + SESSION_SECONDS * 1000) })
+    passwordChangeHeader(c, current)
     return c.json({ data: { user: publicUser(current) } })
   })
 
-  app.get('/api/v1/auth/me', authenticated(), (c) => c.json({ data: { user: publicUser(c.get('user')) } }))
-  app.post('/api/v1/auth/logout', authenticated(), (c) => {
+  app.get('/api/v1/auth/me', authenticated(undefined, true), (c) => {
+    passwordChangeHeader(c, c.get('user'))
+    return c.json({ data: { user: publicUser(c.get('user')) } })
+  })
+  app.post('/api/v1/auth/logout', authenticated(undefined, true), (c) => {
     db.prepare('DELETE FROM sessions WHERE token_hash = ?').run(c.get('tokenHash'))
     setCookie(c, cookieName, '', { ...cookieOptions, maxAge: 0, expires: new Date(0) })
     return c.body(null, 204)
+  })
+
+  app.post('/api/v1/auth/change-password', authenticated(undefined, true), async (c) => {
+    const body = await jsonBody(c, ['current_password', 'new_password'])
+    if (typeof body.current_password !== 'string' || !body.current_password.length || Buffer.byteLength(body.current_password) > 1024) {
+      return invalid({ current_password: 'INVALID_PASSWORD' })
+    }
+    const password = newPassword(body.new_password)
+    if (body.current_password === password) return invalid({ new_password: 'PASSWORD_MUST_DIFFER' })
+    const user = c.get('user')
+    if (!allowLogin(db, `password-change:${user.id}`, clientIp(c))) {
+      c.header('Retry-After', '900')
+      throw new ApiError(429, 'RATE_LIMITED', 'Too many password change attempts')
+    }
+    const passwordHash = await passwordWork(async () => {
+      if (!await verifyPassword(user.password_hash, body.current_password as string)) {
+        throw new ApiError(401, 'INVALID_CREDENTIALS', 'Invalid current password')
+      }
+      return hashPassword(password)
+    })
+    const token = newSessionToken()
+    const now = new Date()
+    const current = transaction(db, () => {
+      const current = sessionUser(c.get('tokenHash'), undefined, true)
+      if (current.password_hash !== user.password_hash) throw new ApiError(409, 'PASSWORD_CHANGED', 'Password already changed; sign in again')
+      db.prepare('UPDATE users SET password_hash = ?, must_change_password = 0 WHERE id = ?').run(passwordHash, user.id)
+      db.prepare('DELETE FROM sessions WHERE user_id = ?').run(user.id)
+      db.prepare('INSERT INTO sessions (token_hash, user_id, created_at, expires_at) VALUES (?, ?, ?, ?)')
+        .run(digest(token), user.id, now.toISOString(), new Date(now.getTime() + SESSION_SECONDS * 1000).toISOString())
+      return { ...current, must_change_password: 0 }
+    })
+    setCookie(c, cookieName, token, { ...cookieOptions, maxAge: SESSION_SECONDS, expires: new Date(now.getTime() + SESSION_SECONDS * 1000) })
+    passwordChangeHeader(c, current)
+    return c.json({ data: { user: publicUser(current) } })
+  })
+
+  app.post('/api/v1/admin/users', authenticated('admin'), async (c) => {
+    const body = await jsonBody(c, ['phone', 'full_name', 'department', 'position'])
+    const profile = accountProfile(body)
+    const password = temporaryPassword()
+    const passwordHash = await passwordWork(() => hashPassword(password))
+    const user = transaction(db, () => {
+      sessionUser(c.get('tokenHash'), 'admin')
+      if (db.prepare('SELECT id FROM users WHERE phone = ?').get(profile.phone)) throw new ApiError(409, 'PHONE_EXISTS', 'Phone already in use')
+      const result = db.prepare(`INSERT INTO users (phone, full_name, department, position, password_hash, role,
+        is_active, must_change_password, created_at) VALUES (?, ?, ?, ?, ?, 'employee', 1, 1, ?)`)
+        .run(profile.phone, profile.full_name, profile.department, profile.position, passwordHash, new Date().toISOString())
+      return db.prepare('SELECT * FROM users WHERE id = ?').get(Number(result.lastInsertRowid)) as unknown as User
+    })
+    // The temporary password is returned exactly once, only to the authenticated administrator.
+    return c.json({ data: { user: employeeView(user), temporary_password: password } }, 201)
+  })
+  app.get('/api/v1/admin/users', authenticated('admin'), (c) => {
+    const { page, limit, offset } = pagination(c)
+    return c.json(transaction(db, () => {
+      const total = Number(db.prepare("SELECT count(*) AS total FROM users WHERE role = 'employee'").get()!.total)
+      const users = db.prepare(`SELECT id, phone, full_name, department, position, role, is_active, must_change_password, created_at
+        FROM users WHERE role = 'employee' ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?`).all(limit, offset) as unknown as User[]
+      return { data: users.map(employeeView), pagination: { page, limit, total } }
+    }))
+  })
+  app.patch('/api/v1/admin/users/:id', authenticated('admin'), async (c) => {
+    const id = userId(c.req.param('id'))
+    const body = await jsonBody(c, ['is_active'])
+    if (typeof body.is_active !== 'boolean') return invalid({ is_active: 'EXPECTED_BOOLEAN' })
+    const user = transaction(db, () => {
+      sessionUser(c.get('tokenHash'), 'admin')
+      const user = db.prepare("SELECT * FROM users WHERE id = ? AND role = 'employee'").get(id) as unknown as User | undefined
+      if (!user) throw new ApiError(404, 'NOT_FOUND', 'Employee not found')
+      db.prepare('UPDATE users SET is_active = ? WHERE id = ?').run(body.is_active ? 1 : 0, id)
+      if (!body.is_active) db.prepare('DELETE FROM sessions WHERE user_id = ?').run(id)
+      return { ...user, is_active: body.is_active ? 1 : 0 }
+    })
+    return c.json({ data: { user: employeeView(user) } })
   })
 
   function listTickets(userId: number | null, page: number, limit: number, offset: number, status?: string) {
@@ -148,6 +240,7 @@ export async function createApp({ db, origin, production = false }: AppOptions) 
     const authorId = c.get('user').id
     const now = new Date().toISOString()
     const ticket = transaction(db, () => {
+      sessionUser(c.get('tokenHash'), 'employee')
       const result = db.prepare(`INSERT INTO tickets (author_id, type, title, description, status, created_at, updated_at)
         VALUES (?, ?, ?, ?, 'new', ?, ?)`).run(authorId, body.type as string, title, description, now, now)
       const id = Number(result.lastInsertRowid)
@@ -182,6 +275,7 @@ export async function createApp({ db, origin, production = false }: AppOptions) 
     const comment = body.comment === undefined ? null : text(body.comment, 'comment', 5, 2000)
     if (['resolved', 'rejected'].includes(nextStatus) && !comment) return invalid({ comment: 'COMMENT_REQUIRED' })
     const result = transaction(db, () => {
+      sessionUser(c.get('tokenHash'), 'admin')
       // Read the status only after taking the write lock. Concurrent decisions cannot share an old status.
       const ticket = db.prepare('SELECT * FROM tickets WHERE id = ?').get(id) as unknown as Ticket | undefined
       if (!ticket) throw new ApiError(404, 'NOT_FOUND', 'Ticket not found')

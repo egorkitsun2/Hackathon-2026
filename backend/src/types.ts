@@ -9,6 +9,8 @@ export interface User {
   role: Role
   is_active: number
   password_hash: string
+  must_change_password: number
+  created_at: string
 }
 export interface Ticket {
   id: number
