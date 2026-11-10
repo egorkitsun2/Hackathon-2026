@@ -165,6 +165,24 @@ export async function createApp({ db, origin, production = false }: AppOptions) 
     return c.json({ data: { user: publicUser(current) } })
   })
 
+  app.get('/api/v1/admin/stats', authenticated('admin'), (c) => {
+    // One read statement provides a consistent snapshot, including zeroes on empty tables.
+    const counts = db.prepare(`SELECT
+      (SELECT count(*) FROM users WHERE role = 'employee') AS employees_total,
+      (SELECT count(*) FROM users WHERE role = 'employee' AND is_active = 1) AS employees_active,
+      count(*) AS tickets_total,
+      count(CASE WHEN status = 'new' THEN 1 END) AS tickets_new,
+      count(CASE WHEN status = 'in_review' THEN 1 END) AS tickets_in_review,
+      count(CASE WHEN status = 'resolved' THEN 1 END) AS tickets_resolved,
+      count(CASE WHEN status = 'rejected' THEN 1 END) AS tickets_rejected
+      FROM tickets`).get()!
+    return c.json({ data: {
+      employees: { total: Number(counts.employees_total), active: Number(counts.employees_active) },
+      tickets: { total: Number(counts.tickets_total), new: Number(counts.tickets_new),
+        in_review: Number(counts.tickets_in_review), resolved: Number(counts.tickets_resolved), rejected: Number(counts.tickets_rejected) },
+    } })
+  })
+
   app.post('/api/v1/admin/users', authenticated('admin'), async (c) => {
     const body = await jsonBody(c, ['phone', 'full_name', 'department', 'position'])
     const profile = accountProfile(body)

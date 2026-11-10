@@ -157,8 +157,9 @@ validation, pagination, status flow, rate limiting, rollback on failed history
 inserts, and concurrent status changes. Tests do not use the demo database or
 commit any test-account credentials.
 
-Scope: nine original endpoints plus employee provisioning, activation/blocking and
-password changes. No public registration, account-management UI, invitations,
+Scope: nine original endpoints plus employee provisioning, activation/blocking,
+password changes and the read-only admin dashboard counters.
+No public registration, account-management UI, invitations,
 Telegram, uploads, analytics, ticket deletion, editing or reopening.
 
 ## First administrator and employee management (v0.3)
@@ -210,3 +211,8 @@ to work. Automated tests exercise the complete empty-database account lifecycle.
 
 The frontend handoff for Sharapat is in
 [`docs/frontend-v03-handoff.md`](../docs/frontend-v03-handoff.md).
+
+`GET /api/v1/admin/stats` returns real SQLite counts of employees (total/active)
+and tickets (total/new/in_review/resolved/rejected). It requires an administrator
+session and uses the existing tables without migrations. The exact response is
+specified in the API contract; no frontend changes are included.
