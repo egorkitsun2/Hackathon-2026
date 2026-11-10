@@ -20,5 +20,9 @@
   },
   "engines": {
     "node": ">=20"
+  },
+  "allowScripts": {
+    "esbuild@0.28.2": true,
+    "workerd@1.20261109.1": true
   }
 }
