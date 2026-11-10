@@ -104,3 +104,26 @@ test('admin queue omits empty status and forwards only allowed filters and pages
     assert.equal(urls.length, 2);
   } finally { globalThis.fetch = previous; }
 });
+
+test('admin PATCH uses exact contract, omits comment for review, and trims final comments', async () => {
+  const previous = globalThis.fetch;
+  const bodies = [];
+  globalThis.fetch = async (url, options) => {
+    assert.equal(url, '/api/v1/admin/tickets/124');
+    assert.equal(options.method, 'PATCH');
+    assert.equal(options.credentials, 'same-origin');
+    bodies.push(JSON.parse(options.body));
+    return Response.json({ data: { id: 124 } });
+  };
+  try {
+    await api.updateTicketStatus(124, { status: 'in_review', comment: 'omit this' });
+    await api.updateTicketStatus(124, { status: 'resolved', comment: ' Valid decision ', role: 'admin' });
+    await api.updateTicketStatus(124, { status: 'rejected', comment: 'x'.repeat(2000) });
+    assert.deepEqual(bodies.slice(0, 2), [{ status: 'in_review' }, { status: 'resolved', comment: 'Valid decision' }]);
+    await assert.rejects(api.updateTicketStatus(124, { status: 'new' }), /VALIDATION_ERROR/);
+    for (const comment of ['', '    ', 'abcd', 'x'.repeat(2001)]) {
+      await assert.rejects(api.updateTicketStatus(124, { status: 'rejected', comment }), /VALIDATION_ERROR/);
+    }
+    assert.equal(bodies.length, 3);
+  } finally { globalThis.fetch = previous; }
+});

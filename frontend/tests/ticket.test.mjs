@@ -14,10 +14,11 @@ const ticket = {
   ],
 };
 
-function harness(getTicket = async () => ({ data: ticket })) {
+function harness(getTicket = async () => ({ data: ticket }), updateTicketStatus = async () => ({})) {
   const elements = new Map();
   const element = () => ({
-    textContent: '', children: [], events: {}, attributes: {},
+    textContent: '', value: '', children: [], events: {}, attributes: {}, dataset: {},
+    focus() { this.focused = true; },
     replaceChildren() { this.children = []; }, append(...children) { this.children.push(...children); },
     addEventListener(name, callback) { this.events[name] = callback; },
     setAttribute(key, value) { this.attributes[key] = value; }, removeAttribute(key) { delete this.attributes[key]; },
@@ -25,7 +26,7 @@ function harness(getTicket = async () => ({ data: ticket })) {
   });
   const get = selector => { if (!elements.has(selector)) elements.set(selector, element()); return elements.get(selector); };
   const document = { querySelector: get, createElement: element, documentElement: { lang: 'ru' } };
-  const context = vm.createContext({ document, getTicket, Intl, t: key => `${document.documentElement.lang}:${key}` });
+  const context = vm.createContext({ document, getTicket, updateTicketStatus, Intl, t: key => `${document.documentElement.lang}:${key}` });
   vm.runInContext(source, context);
   return { context, get, document };
 }
@@ -101,4 +102,124 @@ test('admin sees only server-provided author and returns to queue; employee does
   await flush();
   assert.equal(h.get('#detail-author-block').hidden, true);
   assert.equal(h.get('#detail-back').href, '#/employee');
+});
+
+test('only new tickets can be taken; duplicates are blocked and details refresh after save', async () => {
+  let current = { ...ticket, status: 'new' };
+  let calls = 0;
+  let resolve;
+  const h = harness(async () => ({ data: current }), async (id, values) => {
+    calls++;
+    assert.equal(id, 124);
+    assert.equal(values.status, 'in_review');
+    await new Promise(done => { resolve = done; });
+    current = { ...current, status: 'in_review' };
+  });
+  h.context.openTicketDetails('124', true);
+  await flush();
+  assert.equal(h.get('#take-ticket').hidden, false);
+  assert.equal(h.get('#ticket-decision-form').hidden, true);
+  const pending = h.get('#take-ticket').events.click();
+  assert.equal(h.get('#take-ticket').disabled, true);
+  await h.get('#take-ticket').events.click();
+  assert.equal(calls, 1);
+  resolve();
+  await pending;
+  assert.equal(h.get('#take-ticket').hidden, true);
+  assert.equal(h.get('#ticket-decision-form').hidden, false);
+  assert.equal(h.get('#detail-status').textContent, 'ru:in_review');
+  assert.equal(h.get('#admin-action-status').textContent, 'ru:decisionSaved');
+});
+
+test('terminal decisions require a choice and a trimmed 5–2000 character comment', async () => {
+  let calls = 0;
+  let current = { ...ticket, status: 'in_review' };
+  const h = harness(async () => ({ data: current }), async (id, values) => { calls++; current = { ...current, status: values.status }; });
+  h.context.openTicketDetails('124', true);
+  await flush();
+  const submit = () => h.get('#ticket-decision-form').events.submit({ preventDefault() {} });
+  await submit();
+  assert.equal(h.get('#ticket-decision').focused, true);
+  h.get('#ticket-decision').value = 'rejected';
+  for (const comment of ['    ', 'abcd', 'x'.repeat(2001)]) {
+    h.get('#ticket-decision-comment').value = comment;
+    await submit();
+    assert.equal(h.get('#ticket-decision-comment-error').textContent, 'ru:decisionCommentError');
+  }
+  assert.equal(calls, 0);
+  h.get('#ticket-decision-comment').value = ' Valid reason ';
+  h.document.documentElement.lang = 'kk';
+  h.context.renderTicketDetails();
+  assert.equal(h.get('#ticket-decision-comment').value, ' Valid reason ');
+  await submit();
+  assert.equal(calls, 1);
+  assert.equal(h.get('#detail-status').textContent, 'kk:rejected');
+  assert.equal(h.get('#ticket-decision-form').hidden, true);
+  assert.equal(h.get('#ticket-closed-note').hidden, false);
+  await submit();
+  assert.equal(calls, 1);
+});
+
+test('employees and closed tickets cannot trigger mutations even through handlers', async () => {
+  let calls = 0;
+  const h = harness(async () => ({ data: ticket }), async () => { calls++; });
+  h.context.openTicketDetails('124');
+  await flush();
+  assert.equal(h.get('#admin-ticket-actions').hidden, true);
+  await h.get('#take-ticket').events.click();
+  await h.get('#ticket-decision-form').events.submit({ preventDefault() {} });
+  h.context.openTicketDetails('124', true);
+  await flush();
+  await h.get('#take-ticket').events.click();
+  assert.equal(calls, 0);
+});
+
+test('conflict refreshes current status without replaying a mutation', async () => {
+  let current = { ...ticket, status: 'new' };
+  let calls = 0;
+  const h = harness(async () => ({ data: current }), async () => {
+    calls++;
+    current = { ...current, status: 'in_review' };
+    throw new Error('INVALID_TRANSITION');
+  });
+  h.context.openTicketDetails('124', true);
+  await flush();
+  await h.get('#take-ticket').events.click();
+  assert.equal(calls, 1);
+  assert.equal(h.get('#detail-status').textContent, 'ru:in_review');
+  assert.equal(h.get('#admin-action-status').textContent, 'ru:decisionConflict');
+});
+
+test('uncertain PATCH refreshes persisted state and does not automatically retry', async () => {
+  let current = { ...ticket, status: 'in_review' };
+  let calls = 0;
+  const h = harness(async () => ({ data: current }), async () => {
+    calls++;
+    current = { ...current, status: 'resolved' };
+    throw new Error('NETWORK_ERROR');
+  });
+  h.context.openTicketDetails('124', true);
+  await flush();
+  h.get('#ticket-decision').value = 'resolved';
+  h.get('#ticket-decision-comment').value = 'A valid decision';
+  await h.get('#ticket-decision-form').events.submit({ preventDefault() {} });
+  assert.equal(calls, 1);
+  assert.equal(h.get('#detail-status').textContent, 'ru:resolved');
+  assert.equal(h.get('#admin-action-status').textContent, 'ru:decisionUncertain');
+});
+
+test('logout clears comment and ignores late save responses', async () => {
+  let resolve;
+  const h = harness(async () => ({ data: { ...ticket, status: 'in_review' } }), () => new Promise(done => { resolve = done; }));
+  h.context.openTicketDetails('124', true);
+  await flush();
+  h.get('#ticket-decision').value = 'resolved';
+  h.get('#ticket-decision-comment').value = 'Private comment';
+  const pending = h.get('#ticket-decision-form').events.submit({ preventDefault() {} });
+  h.context.closeTicketDetails();
+  resolve({});
+  await pending;
+  assert.equal(h.get('#ticket-decision-comment').value, '');
+  assert.equal(h.get('#ticket-detail-content').hidden, true);
+  assert.equal(h.get('#admin-action-status').textContent, '');
 });
