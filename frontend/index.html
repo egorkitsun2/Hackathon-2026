@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Голос команды</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="css/styles.css">
+  <script type="module" src="js/app.js"></script>
+</head>
+<body>
+  <header class="site-header">
+    <p class="brand" data-i18n="projectName">Голос команды</p>
+    <div class="languages" role="group" data-i18n-label="languageLabel" aria-label="Язык интерфейса">
+      <button type="button" data-language="ru" lang="ru" aria-pressed="true">РУС</button>
+      <span aria-hidden="true">/</span>
+      <button type="button" data-language="kk" lang="kk" aria-pressed="false">ҚАЗ</button>
+    </div>
+  </header>
+  <main id="app">
+    <section class="login-panel" aria-labelledby="login-title">
+      <h1 id="login-title" data-i18n="loginTitle">Вход в систему</h1>
+      <p class="muted" data-i18n="loginHint">Введите рабочий номер телефона и пароль.</p>
+      <form id="login-form" novalidate autocomplete="off">
+        <div class="field">
+          <label for="phone" data-i18n="phoneLabel">Номер телефона</label>
+          <input id="phone" name="phone" type="tel" inputmode="tel" autocomplete="off" placeholder="+7 (700) 000-00-00" required aria-describedby="phone-hint phone-error">
+          <p id="phone-hint" class="hint" data-i18n="phoneHint">Казахстан: +7 (7XX) XXX-XX-XX или 8 (7XX) XXX-XX-XX.</p>
+          <p id="phone-error" class="field-error" aria-live="polite" hidden></p>
+        </div>
+        <div class="field">
+          <label for="password" data-i18n="passwordLabel">Пароль</label>
+          <div class="password-control">
+            <input id="password" name="password" type="password" autocomplete="off" required aria-describedby="password-error">
+            <button id="toggle-password" class="secondary-button" type="button" aria-controls="password" aria-pressed="false" data-i18n="showPassword">Показать</button>
+          </div>
+          <p id="password-error" class="field-error" aria-live="polite" hidden></p>
+        </div>
+        <button id="submit-login" class="primary-button" type="submit" data-i18n="signIn">Войти</button>
+        <p id="login-status" class="status" role="status" data-i18n="backendUnavailable">Подключение к серверу ещё не готово. Вход пока недоступен.</p>
+      </form>
+      <p class="access-note muted" data-i18n="accessNote">Нет доступа? Обратитесь к администратору</p>
+      <noscript>Для работы страницы включите JavaScript. / Бетті пайдалану үшін JavaScript қосыңыз.</noscript>
+    </section>
+  </main>
+</body>
+</html>
