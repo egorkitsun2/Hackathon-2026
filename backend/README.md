@@ -12,7 +12,12 @@ Use Node.js **24.13+** (tested on 26.13.0) and npm. SQLite uses the built-in
 binaries. On platforms without a compatible prebuilt binary, npm may need a
 C/C++ build toolchain. Dependencies are locked in `package-lock.json`.
 
-From the repository root:
+Stop the running backend (Ctrl+C in its terminal) before `npm ci`, especially on
+Windows: a loaded Argon2 native library prevents replacement of node_modules.
+For Windows recovery and first-admin setup, see
+[`docs/windows-local-setup.md`](../docs/windows-local-setup.md).
+
+For an explicitly disposable demo database, from the repository root:
 
 ```powershell
 cd backend
@@ -162,7 +167,9 @@ For a real initial administrator, use bootstrap **instead of demo seed** on a
 fresh database. From backend/:
 
 ```powershell
-npm.cmd run bootstrap:admin -- --phone '+77001234567' --full-name 'First Administrator' --department 'Office' --position 'Administrator'
+npm.cmd run bootstrap:admin
+# Enter phone, full name, department and position in sequence.
+# Existing --phone/--full-name/--department/--position flags are also supported.
 npm.cmd run dev
 ```
 
@@ -170,7 +177,10 @@ Bootstrap applies migrations and writes the generated administrator password to
 `.local/bootstrap-admin.json` (private and Git-ignored). Passwords are not passed
 as shell arguments or printed. It refuses when any admin already exists,
 including a disabled one, and will not overwrite the credential file or promote
-an employee. On an existing demo database, use its already seeded admin:
+an employee. On normal write/COMMIT failures, the transaction rolls back and
+removes only the credential file created by that invocation. SQLite and the
+filesystem are not one crash-atomic transaction: after a machine/process crash,
+inspect any leftover file and account state locally before retrying. On an existing demo database, use its already seeded admin:
 bootstrap must refuse it. No public administrator registration route exists.
 
 An authenticated administrator uses POST `/api/v1/admin/users` with phone,
@@ -197,3 +207,6 @@ frontend files. The current frontend has no employee-management or mandatory
 password-change forms; these new flows are usable through API clients until
 that UI is added. Existing demo accounts and ordinary ticket screens continue
 to work. Automated tests exercise the complete empty-database account lifecycle.
+
+The frontend handoff for Sharapat is in
+[`docs/frontend-v03-handoff.md`](../docs/frontend-v03-handoff.md).

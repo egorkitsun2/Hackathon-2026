@@ -338,6 +338,11 @@ database, an operator runs from backend/:
 npm.cmd run bootstrap:admin -- --phone '+77001234567' --full-name 'First Administrator' --department 'Office' --position 'Administrator'
 ```
 
+Run `npm.cmd run bootstrap:admin` without arguments for sequential prompts.
+Missing fields are prompted individually; the complete flag form above remains
+supported. `npm.cmd run bootstrap:admin -- --help` prints usage without opening
+the database. EOF/Ctrl+C cancels before account creation; no password is requested.
+
 This command applies local migrations and creates one active admin with a
 cryptographically random password (24 random bytes, 32 base64url characters).
 Credentials are saved once to backend/.local/bootstrap-admin.json with exclusive

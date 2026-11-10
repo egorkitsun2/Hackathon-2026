@@ -1,6 +1,6 @@
 import type { DatabaseSync } from 'node:sqlite'
 import { randomBytes } from 'node:crypto'
-import { mkdirSync, writeFileSync } from 'node:fs'
+import { closeSync, fstatSync, fsyncSync, lstatSync, mkdirSync, openSync, unlinkSync, writeFileSync } from 'node:fs'
 import { dirname } from 'node:path'
 import { transaction } from './db.js'
 import { hashPassword, normalizePhone } from './security.js'
@@ -30,17 +30,34 @@ export async function bootstrapAdmin(db: DatabaseSync, input: AccountProfile, cr
   const password = temporaryPassword()
   const passwordHash = await hashPassword(password)
   mkdirSync(dirname(credentialsPath), { recursive: true, mode: 0o700 })
-  transaction(db, () => {
-    // Recheck under a database write lock, so concurrent bootstrap processes cannot both succeed.
-    ensureAvailable()
-    const now = new Date().toISOString()
-    const result = db.prepare(`INSERT INTO users (phone, full_name, department, position, password_hash, role,
-      is_active, must_change_password, created_at) VALUES (?, ?, ?, ?, ?, 'admin', 1, 0, ?)`)
-      .run(profile.phone, profile.full_name, profile.department, profile.position, passwordHash, now)
-    // Failure to securely create a fresh credential file also rolls back account creation.
-    writeFileSync(credentialsPath, JSON.stringify({ user: { id: Number(result.lastInsertRowid), ...profile, role: 'admin' }, password }, null, 2) + '\n',
-      { flag: 'wx', mode: 0o600 })
-  })
+  let descriptor: number | undefined
+  let createdFile: { dev: bigint; ino: bigint } | undefined
+  let committed = false
+  try {
+    transaction(db, () => {
+      // Recheck under a database write lock, so concurrent bootstrap processes cannot both succeed.
+      ensureAvailable()
+      const now = new Date().toISOString()
+      const result = db.prepare(`INSERT INTO users (phone, full_name, department, position, password_hash, role,
+        is_active, must_change_password, created_at) VALUES (?, ?, ?, ?, ?, 'admin', 1, 0, ?)`)
+        .run(profile.phone, profile.full_name, profile.department, profile.position, passwordHash, now)
+      descriptor = openSync(credentialsPath, 'wx', 0o600)
+      createdFile = fstatSync(descriptor, { bigint: true })
+      writeFileSync(descriptor, JSON.stringify({ user: { id: Number(result.lastInsertRowid), ...profile, role: 'admin' }, password }, null, 2) + '\n')
+      fsyncSync(descriptor)
+    })
+    committed = true
+  } finally {
+    if (descriptor !== undefined) closeSync(descriptor)
+    if (!committed && createdFile) {
+      // Clean up partial writes and failed COMMITs, but never a pre-existing or replaced file.
+      let current
+      try { current = lstatSync(credentialsPath, { bigint: true }) } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+      }
+      if (current?.isFile() && current.dev === createdFile.dev && current.ino === createdFile.ino) unlinkSync(credentialsPath)
+    }
+  }
 }
 
 export function newPassword(value: unknown): string {
