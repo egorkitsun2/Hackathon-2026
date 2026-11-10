@@ -16,16 +16,34 @@ export async function request(path, options = {}) {
   try { result = await response.json(); } catch { throw new Error('API_UNAVAILABLE'); }
   if (!response.ok) {
     const code = result.error?.code ?? 'API_UNAVAILABLE';
-    if (code === 'UNAUTHORIZED' || code === 'ACCOUNT_DISABLED') {
-      globalThis.window?.dispatchEvent(new Event('session-ended'));
+    if (['UNAUTHORIZED', 'ACCOUNT_DISABLED', 'PASSWORD_CHANGED'].includes(code)) {
+      const event = new Event('session-ended');
+      event.code = code;
+      globalThis.window?.dispatchEvent(event);
     }
+    if (code === 'PASSWORD_CHANGE_REQUIRED') globalThis.window?.dispatchEvent(new Event('password-change-required'));
     const error = new Error(code);
     error.details = result.error?.details;
+    const retry = response.headers?.get('Retry-After');
+    error.retryAfter = retry && /^\d+$/.test(retry) ? Number(retry) : null;
     throw error;
   }
   if (!result.data) throw new Error('API_UNAVAILABLE');
+  const required = response.headers?.get('X-Password-Change-Required');
+  if (required !== undefined && required !== null) result.meta = { passwordChangeRequired: required === 'true' };
   return result;
 }
+
+export const changePassword = ({ current_password, new_password }) => request('/auth/change-password', {
+  method: 'POST', body: JSON.stringify({ current_password, new_password }),
+});
+export const getUsers = (page = 1) => request(`/admin/users?page=${page}&limit=20`);
+export const createUser = ({ phone, full_name, department, position }) => request('/admin/users', {
+  method: 'POST', body: JSON.stringify({ phone: normalizePhone(phone), full_name: full_name.trim(), department: department.trim(), position: position.trim() }),
+});
+export const updateUser = (id, is_active) => request(`/admin/users/${id}`, {
+  method: 'PATCH', body: JSON.stringify({ is_active }),
+});
 
 export function normalizePhone(value) {
   const input = value.trim();

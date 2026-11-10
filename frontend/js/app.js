@@ -1,3 +1,4 @@
+import { openAccounts, closeAccounts, renderAccounts } from './accounts.js';
 import { login, logout, getMe, normalizePhone } from './api.js';
 import { setLanguage, t } from './i18n.js';
 import { openEmployee, closeEmployee, renderEmployee } from './employee.js';
@@ -14,6 +15,7 @@ const status = document.querySelector('#login-status');
 const errors = { phone: '', password: '' };
 let submitting = false;
 let user = null;
+let passwordChangeRequired = false;
 let restoringSession = true;
 let sessionVersion = 0;
 const logoutButton = document.querySelector('#logout');
@@ -58,6 +60,7 @@ document.querySelectorAll('[data-language]').forEach((button) => {
     renderNewTicket();
     renderTicketDetails();
     renderAdminQueue();
+    renderAccounts();
   });
 });
 
@@ -106,6 +109,7 @@ form.addEventListener('submit', async (event) => {
     const response = await login({ phone: normalizePhone(phone.value), password: password.value });
     if (version !== sessionVersion) return;
     user = response.data.user;
+    passwordChangeRequired = response.meta?.passwordChangeRequired === true;
     password.value = '';
     password.type = 'password';
     renderPasswordToggle();
@@ -123,39 +127,60 @@ form.addEventListener('submit', async (event) => {
 });
 
 function route() {
-  const employee = user?.role === 'employee';
-  const admin = user?.role === 'admin';
+  const changing = Boolean(user && passwordChangeRequired);
+  const employee = !changing && user?.role === 'employee';
+  const admin = !changing && user?.role === 'admin';
+  const managing = admin && location.hash === '#/admin/users';
   const creating = employee && location.hash === '#/new-ticket';
   const detailMatch = employee ? location.hash.match(/^#\/tickets\/(\d+)$/) : admin ? location.hash.match(/^#\/admin\/tickets\/(\d+)$/) : null;
   const viewing = Boolean(detailMatch);
-  const target = employee ? (creating ? '#/new-ticket' : viewing ? location.hash : '#/employee') : admin ? (viewing ? location.hash : '#/admin') : '#/login';
+  const target = changing ? '#/change-password' : managing ? '#/admin/users' : employee ? (creating ? '#/new-ticket' : viewing ? location.hash : '#/employee') : admin ? (viewing ? location.hash : '#/admin') : '#/login';
   if (!restoringSession && location.hash !== target) history.replaceState(null, '', target);
-  document.querySelector('#login-screen').hidden = employee || admin;
+  document.querySelector('#login-screen').hidden = Boolean(user);
+  document.querySelector('#change-password-screen').hidden = !changing;
+  document.querySelector('#users-screen').hidden = !managing;
   document.querySelector('#employee-screen').hidden = !employee || creating || viewing;
   document.querySelector('#new-ticket-screen').hidden = !creating;
   document.querySelector('#ticket-detail-screen').hidden = !viewing;
-  document.querySelector('#admin-screen').hidden = !admin || viewing;
+  document.querySelector('#admin-screen').hidden = !admin || viewing || managing;
   document.body.classList.toggle('employee-screen', employee || viewing);
   document.body.classList.toggle('admin-screen', admin && !viewing);
   logoutButton.hidden = !user;
   closeEmployee();
   closeTicketDetails();
   closeAdminQueue(!admin);
+  if (changing || managing) {
+    resetNewTicket();
+    openAccounts(changing ? 'password' : 'users', response => {
+      user = response.data.user;
+      passwordChangeRequired = response.meta?.passwordChangeRequired === true;
+      route();
+    });
+    return;
+  }
+  closeAccounts();
   if (creating) openNewTicket();
   else if (viewing) openTicketDetails(detailMatch[1], admin);
   else if (employee) openEmployee(user);
   else if (admin) openAdminQueue(user);
 }
 
-window.addEventListener('session-ended', () => {
+window.addEventListener('password-change-required', () => {
+  if (!user) return;
+  passwordChangeRequired = true;
+  route();
+});
+
+window.addEventListener('session-ended', (event) => {
   sessionVersion++;
   user = null;
   resetNewTicket();
   route();
-  showStatus(status, 'sessionExpired');
+  showStatus(status, event?.code === 'ACCOUNT_DISABLED' ? 'accountDisabled' : 'sessionExpired');
 });
 
 logoutButton.addEventListener('click', async () => {
+  closeAccounts();
   logoutButton.disabled = true;
   showStatus(sessionStatus);
   try {
@@ -166,6 +191,7 @@ logoutButton.addEventListener('click', async () => {
     route();
     showStatus(status);
   } catch (error) {
+    route();
     showStatus(sessionStatus, errorKey(error));
   } finally { logoutButton.disabled = false; }
 });
@@ -178,6 +204,7 @@ async function restoreSession() {
     const response = await getMe();
     if (version !== sessionVersion) return;
     user = response.data.user;
+    passwordChangeRequired = response.meta?.passwordChangeRequired === true;
     showStatus(status);
   } catch (error) {
     if (error.message === 'UNAUTHORIZED') showStatus(status);
