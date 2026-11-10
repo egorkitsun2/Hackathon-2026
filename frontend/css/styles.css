@@ -108,6 +108,7 @@ h2 { margin: 0; font-size: var(--brand-size); }
 .event-actor { margin-block: var(--space-xs); font-weight: 600; }
 #detail-title { overflow-wrap: anywhere; margin-block: var(--space-xs); }
 #retry-ticket-detail { margin-top: var(--space-md); }
+#take-ticket { margin-top: var(--space-md); }
 :root { --admin-width: 70rem; }
 .admin-screen .site-header { max-width: var(--admin-width); }
 .admin-panel { max-width: var(--admin-width); margin-inline: auto; display: grid; gap: var(--block-gap); }

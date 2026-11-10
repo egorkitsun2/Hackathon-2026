@@ -1,4 +1,4 @@
-import { getTicket } from './api.js';
+import { getTicket, updateTicketStatus } from './api.js';
 import { t } from './i18n.js';
 
 const screen = document.querySelector('#ticket-detail-screen');
@@ -12,6 +12,39 @@ let ticketId = null;
 let state = '';
 let requestId = 0;
 let adminView = false;
+const actions = document.querySelector('#admin-ticket-actions');
+const takeButton = document.querySelector('#take-ticket');
+const decisionForm = document.querySelector('#ticket-decision-form');
+const decisionFields = document.querySelector('#ticket-decision-fields');
+const decision = document.querySelector('#ticket-decision');
+const comment = document.querySelector('#ticket-decision-comment');
+const saveButton = document.querySelector('#save-ticket-decision');
+const actionStatus = document.querySelector('#admin-action-status');
+let saving = false;
+let feedback = '';
+let decisionError = '';
+let commentError = '';
+
+function renderActions() {
+  actionStatus.hidden = !adminView || !feedback;
+  actionStatus.textContent = feedback ? t(feedback) : '';
+  actions.hidden = !adminView || !ticket;
+  takeButton.hidden = ticket?.status !== 'new';
+  takeButton.disabled = saving;
+  takeButton.dataset.i18n = saving ? 'savingDecision' : 'takeTicket';
+  takeButton.textContent = t(takeButton.dataset.i18n);
+  decisionForm.hidden = ticket?.status !== 'in_review';
+  decisionFields.disabled = saving;
+  saveButton.dataset.i18n = saving ? 'savingDecision' : 'saveDecision';
+  saveButton.textContent = t(saveButton.dataset.i18n);
+  document.querySelector('#ticket-closed-note').hidden = !['resolved', 'rejected'].includes(ticket?.status);
+  for (const [input, selector, key] of [[decision, '#ticket-decision-error', decisionError], [comment, '#ticket-decision-comment-error', commentError]]) {
+    input.setAttribute('aria-invalid', String(Boolean(key)));
+    const message = document.querySelector(selector);
+    message.textContent = key ? t(key) : '';
+    message.hidden = !key;
+  }
+}
 
 function textElement(tag, text, className) {
   const element = document.createElement(tag);
@@ -27,6 +60,7 @@ function formatDate(date) {
 }
 
 export function renderTicketDetails() {
+  renderActions();
   statusPanel.hidden = !state;
   status.textContent = state ? t(state) : '';
   retry.hidden = state !== 'ticketLoadError';
@@ -68,9 +102,11 @@ export function renderTicketDetails() {
   document.querySelector('#detail-no-history').hidden = events.length > 0;
 }
 
-async function loadTicket() {
+async function loadTicket(message = '') {
   const id = ++requestId;
   ticket = null;
+  saving = false;
+  feedback = message;
   state = 'loadingTicket';
   screen.setAttribute('aria-busy', 'true');
   renderTicketDetails();
@@ -102,6 +138,13 @@ export function closeTicketDetails() {
   ticket = null;
   ticketId = null;
   state = '';
+  saving = false;
+  feedback = '';
+  decisionError = '';
+  commentError = '';
+  decision.value = '';
+  comment.value = '';
+  actions.removeAttribute('aria-busy');
   screen.removeAttribute('aria-busy');
   // Clear private text as well as hiding it when leaving a ticket or signing out.
   document.querySelector('#detail-author-block').hidden = true;
@@ -111,4 +154,52 @@ export function closeTicketDetails() {
   renderTicketDetails();
 }
 
-retry.addEventListener('click', loadTicket);
+retry.addEventListener('click', () => loadTicket(feedback));
+
+async function saveStatus(nextStatus) {
+  if (!adminView || !ticket || saving) return;
+  const allowed = ticket.status === 'new' ? nextStatus === 'in_review'
+    : ticket.status === 'in_review' && ['resolved', 'rejected'].includes(nextStatus);
+  if (!allowed) return;
+  const id = requestId;
+  saving = true;
+  feedback = '';
+  actions.setAttribute('aria-busy', 'true');
+  renderActions();
+  try {
+    await updateTicketStatus(ticket.id, { status: nextStatus, comment: comment.value });
+    if (id !== requestId) return;
+    decision.value = '';
+    comment.value = '';
+    await loadTicket('decisionSaved');
+  } catch (error) {
+    if (id !== requestId) return;
+    if (error.message === 'INVALID_TRANSITION') await loadTicket('decisionConflict');
+    else if (['NETWORK_ERROR', 'API_UNAVAILABLE', 'INTERNAL_ERROR', 'NOT_FOUND'].includes(error.message)) {
+      await loadTicket('decisionUncertain');
+    } else {
+      if (error.message === 'VALIDATION_ERROR' && error.details?.comment) commentError = 'decisionCommentError';
+      feedback = ({ VALIDATION_ERROR: 'decisionValidationError', FORBIDDEN: 'adminForbidden',
+        UNAUTHORIZED: 'sessionExpired', ACCOUNT_DISABLED: 'accountDisabled', INVALID_ORIGIN: 'invalidOrigin',
+        RATE_LIMITED: 'rateLimited', SERVICE_UNAVAILABLE: 'serviceUnavailable' })[error.message] ?? 'decisionSaveError';
+    }
+  } finally {
+    // A refreshed detail or another route owns its own request state.
+    if (id === requestId) { saving = false; renderActions(); }
+    if (!saving) actions.removeAttribute('aria-busy');
+  }
+}
+
+takeButton.addEventListener('click', () => saveStatus('in_review'));
+decisionForm.addEventListener('submit', async event => {
+  event.preventDefault();
+  if (!adminView || ticket?.status !== 'in_review' || saving) return;
+  decisionError = ['resolved', 'rejected'].includes(decision.value) ? '' : 'decisionRequired';
+  const length = Array.from(comment.value.trim()).length;
+  commentError = length >= 5 && length <= 2000 ? '' : 'decisionCommentError';
+  renderActions();
+  if (decisionError || commentError) { (decisionError ? decision : comment).focus(); return; }
+  await saveStatus(decision.value);
+});
+decision.addEventListener('change', () => { decisionError = ''; renderActions(); });
+comment.addEventListener('input', () => { commentError = ''; renderActions(); });

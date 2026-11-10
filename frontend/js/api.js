@@ -74,3 +74,18 @@ export async function getAdminTickets({ status = '', page = 1, limit = 20 } = {}
   }
   return request(`/admin/tickets?page=${page}&limit=${limit}${status ? `&status=${status}` : ''}`);
 }
+
+export async function updateTicketStatus(id, { status, comment }) {
+  if (!/^[1-9]\d*$/.test(String(id)) || !Number.isSafeInteger(Number(id))) throw new Error('NOT_FOUND');
+  if (!['in_review', 'resolved', 'rejected'].includes(status)) throw new Error('VALIDATION_ERROR');
+  const body = { status };
+  if (status !== 'in_review') {
+    if (typeof comment !== 'string' || Array.from(comment.trim()).length < 5 || Array.from(comment.trim()).length > 2000) {
+      const error = new Error('VALIDATION_ERROR');
+      error.details = { comment: 'INVALID_COMMENT' };
+      throw error;
+    }
+    body.comment = comment.trim();
+  }
+  return request(`/admin/tickets/${id}`, { method: 'PATCH', body: JSON.stringify(body) });
+}

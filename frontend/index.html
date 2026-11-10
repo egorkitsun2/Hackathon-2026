@@ -109,12 +109,12 @@
         <p id="ticket-detail-status" role="status"></p>
         <button id="retry-ticket-detail" class="secondary-button" type="button" data-i18n="retry" hidden>Повторить</button>
       </div>
+      <p id="admin-action-status" class="content-block" role="status" hidden></p>
       <div id="ticket-detail-content" class="ticket-detail-content" hidden>
         <section id="detail-author-block" class="content-block" aria-labelledby="detail-author-heading" hidden>
           <h2 id="detail-author-heading" data-i18n="ticketAuthor">Автор обращения</h2>
           <p id="detail-author-name" class="employee-name"></p>
           <p id="detail-author-position" class="muted"></p>
-          <p class="hint" data-i18n="adminActionsNext">На этом шаге доступен просмотр. Управление статусом добавим следующим шагом.</p>
         </section>
         <section class="content-block" aria-labelledby="detail-title">
           <p id="detail-meta" class="hint"></p>
@@ -132,6 +132,32 @@
           <h2 id="detail-history-heading" data-i18n="ticketHistory">История изменений</h2>
           <ol id="detail-history" class="ticket-history"></ol>
           <p id="detail-no-history" class="hint" data-i18n="noHistory" hidden>История пока пуста.</p>
+        </section>
+        <section id="admin-ticket-actions" class="content-block" aria-labelledby="admin-actions-title" hidden>
+          <h2 id="admin-actions-title" data-i18n="adminActionsTitle">Рассмотрение обращения</h2>
+          <button id="take-ticket" class="primary-button" type="button" data-i18n="takeTicket" hidden>Взять на рассмотрение</button>
+          <form id="ticket-decision-form" novalidate hidden>
+            <fieldset id="ticket-decision-fields" class="ticket-fields">
+              <legend class="visually-hidden" data-i18n="adminActionsTitle">Рассмотрение обращения</legend>
+              <div class="field">
+                <label for="ticket-decision" data-i18n="decisionLabel">Решение</label>
+                <select id="ticket-decision" required aria-describedby="ticket-decision-error">
+                  <option value="" data-i18n="chooseDecision">Выберите решение</option>
+                  <option value="resolved" data-i18n="resolveTicket">Решить</option>
+                  <option value="rejected" data-i18n="rejectTicket">Отклонить</option>
+                </select>
+                <p id="ticket-decision-error" class="field-error" aria-live="polite" hidden></p>
+              </div>
+              <div class="field">
+                <label for="ticket-decision-comment" data-i18n="decisionComment">Комментарий</label>
+                <textarea id="ticket-decision-comment" rows="5" required aria-describedby="ticket-decision-hint ticket-decision-comment-error"></textarea>
+                <p id="ticket-decision-hint" class="hint" data-i18n="decisionHint">Обязательно: от 5 до 2000 символов.</p>
+                <p id="ticket-decision-comment-error" class="field-error" aria-live="polite" hidden></p>
+              </div>
+              <button id="save-ticket-decision" class="primary-button" type="submit" data-i18n="saveDecision">Сохранить решение</button>
+            </fieldset>
+          </form>
+          <p id="ticket-closed-note" class="hint" data-i18n="ticketClosedNote" hidden>Обращение закрыто. Доступен только просмотр.</p>
         </section>
       </div>
     </section>
