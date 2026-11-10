@@ -6,7 +6,7 @@ import vm from 'node:vm';
 const source = (await readFile(new URL('../js/app.js', import.meta.url), 'utf8')).replace(/^import .*;\r?\n/gm, '');
 const flush = () => new Promise(resolve => setImmediate(resolve));
 
-function harness({ restoredUser = null, loginError = null, hash = '#/employee' } = {}) {
+function harness({ restoredUser = null, loginError = null, hash = '#/employee', required = false } = {}) {
   const elements = new Map();
   const handlers = {};
   const document = {
@@ -31,13 +31,14 @@ function harness({ restoredUser = null, loginError = null, hash = '#/employee' }
     history: { replaceState(a, b, hash) { location.hash = hash; } },
     window: { addEventListener(name, callback) { handlers[name] = callback; } },
     normalizePhone: value => value === '87000000001' ? '+77000000001' : null,
-    login: async () => { if (loginError) throw new Error(loginError); return { data: { user } }; },
-    getMe: async () => { if (!restoredUser) throw new Error('UNAUTHORIZED'); return { data: { user: restoredUser } }; },
+    login: async () => { if (loginError) throw new Error(loginError); return { data: { user }, meta: { passwordChangeRequired: required } }; },
+    getMe: async () => { if (!restoredUser) throw new Error('UNAUTHORIZED'); return { data: { user: restoredUser }, meta: { passwordChangeRequired: required } }; },
     logout: async () => null,
     openEmployee: profile => opened.push(profile), closeEmployee() {}, renderEmployee() {},
     openNewTicket() {}, resetNewTicket() {}, renderNewTicket() {},
     openTicketDetails: id => detailsOpened.push(id), closeTicketDetails() {}, renderTicketDetails() {},
     openAdminQueue: user => adminsOpened.push(user), closeAdminQueue() {}, renderAdminQueue() {},
+    openAccounts() {}, closeAccounts() {}, renderAccounts() {},
     setLanguage() {}, t: key => key,
   });
   vm.runInContext(source, context);
@@ -128,4 +129,33 @@ test('direct ticket link survives session restore; hash navigation switches deta
   h.handlers['session-ended']();
   assert.equal(h.location.hash, '#/login');
   assert.equal(h.get('#ticket-detail-screen').hidden, true);
+});
+
+
+test('mandatory change guards restored deep links, navigation and login before ticket requests', async () => {
+  for (const hash of ['#/tickets/1', '#/new-ticket', '#/admin/users']) {
+    const h = harness({ restoredUser: { id: 1, role: 'employee' }, required: true, hash });
+    await flush();
+    assert.equal(h.location.hash, '#/change-password');
+    assert.equal(h.get('#change-password-screen').hidden, false);
+    assert.equal(h.opened.length + h.detailsOpened.length + h.adminsOpened.length, 0);
+    h.location.hash = '#/employee'; h.handlers.hashchange();
+    assert.equal(h.location.hash, '#/change-password');
+  }
+  const h = harness({ required: true }); await flush();
+  h.get('#phone').value = '87000000001'; h.get('#password').value = 'temporary';
+  await h.get('#login-form').events.submit({ preventDefault() {} });
+  assert.equal(h.location.hash, '#/change-password');
+  assert.equal(h.opened.length, 0);
+});
+
+test('server-required change event guards an existing session; employee cannot open users', async () => {
+  const h = harness({ restoredUser: { id: 1, role: 'employee' }, hash: '#/admin/users' });
+  await flush();
+  assert.equal(h.get('#users-screen').hidden, true);
+  h.handlers['password-change-required']();
+  assert.equal(h.location.hash, '#/change-password');
+  h.handlers['session-ended']({ code: 'ACCOUNT_DISABLED' });
+  assert.equal(h.location.hash, '#/login');
+  assert.equal(h.get('#login-status').textContent, 'accountDisabled');
 });

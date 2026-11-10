@@ -1,6 +1,6 @@
 # Team Voice backend
 
-Hackathon MVP: TypeScript + Hono on Node.js, SQLite, Argon2id and server-side
+Hackathon MVP v0.3 stage 1: TypeScript + Hono on Node.js, SQLite, Argon2id and server-side
 cookie sessions. The API and JSON shapes are defined in
 [`docs/api-contract.md`](../docs/api-contract.md). No Cloudflare account,
 Workers subscription or cloud resources are required.
@@ -12,7 +12,12 @@ Use Node.js **24.13+** (tested on 26.13.0) and npm. SQLite uses the built-in
 binaries. On platforms without a compatible prebuilt binary, npm may need a
 C/C++ build toolchain. Dependencies are locked in `package-lock.json`.
 
-From the repository root:
+Stop the running backend (Ctrl+C in its terminal) before `npm ci`, especially on
+Windows: a loaded Argon2 native library prevents replacement of node_modules.
+For Windows recovery and first-admin setup, see
+[`docs/windows-local-setup.md`](../docs/windows-local-setup.md).
+
+For an explicitly disposable demo database, from the repository root:
 
 ```powershell
 cd backend
@@ -152,5 +157,56 @@ validation, pagination, status flow, rate limiting, rollback on failed history
 inserts, and concurrent status changes. Tests do not use the demo database or
 commit any test-account credentials.
 
-Scope: the nine agreed endpoints only. No registration, account-management UI,
+Scope: nine original endpoints plus employee provisioning, activation/blocking and
+password changes. No public registration, account-management UI, invitations,
 Telegram, uploads, analytics, ticket deletion, editing or reopening.
+
+## First administrator and employee management (v0.3)
+
+For a real initial administrator, use bootstrap **instead of demo seed** on a
+fresh database. From backend/:
+
+```powershell
+npm.cmd run bootstrap:admin
+# Enter phone, full name, department and position in sequence.
+# Existing --phone/--full-name/--department/--position flags are also supported.
+npm.cmd run dev
+```
+
+Bootstrap applies migrations and writes the generated administrator password to
+`.local/bootstrap-admin.json` (private and Git-ignored). Passwords are not passed
+as shell arguments or printed. It refuses when any admin already exists,
+including a disabled one, and will not overwrite the credential file or promote
+an employee. On normal write/COMMIT failures, the transaction rolls back and
+removes only the credential file created by that invocation. SQLite and the
+filesystem are not one crash-atomic transaction: after a machine/process crash,
+inspect any leftover file and account state locally before retrying. On an existing demo database, use its already seeded admin:
+bootstrap must refuse it. No public administrator registration route exists.
+
+An authenticated administrator uses POST `/api/v1/admin/users` with phone,
+full_name, department and position. The response includes a generated temporary
+password once; deliver it privately. GET the same path lists employees, and
+PATCH `/api/v1/admin/users/:id` with `{ "is_active": false }` blocks an employee
+and revokes all their sessions. true activates without reviving old sessions.
+Full request/response shapes are in the v0.3 API contract.
+
+A newly created employee signs in with the temporary password. Login and me
+retain the old JSON and expose `X-Password-Change-Required: true` as a response
+header. Until POST `/api/v1/auth/change-password` succeeds, only me, logout and
+change-password are available. Send current_password and new_password; new
+password must be 12-128 characters and different. The change revokes old
+sessions, clears the requirement and sets a fresh cookie atomically.
+
+Existing users stay compatible: migration 0003 defaults the new flag to 0,
+retaining all accounts, tickets, histories and sessions. `npm.cmd run db:migrate`
+and server startup apply pending migrations. Back up an existing SQLite database
+with SQLite's backup API before upgrading a live local database.
+
+**Frontend integration remains a separate stage.** This change does not modify
+frontend files. The current frontend has no employee-management or mandatory
+password-change forms; these new flows are usable through API clients until
+that UI is added. Existing demo accounts and ordinary ticket screens continue
+to work. Automated tests exercise the complete empty-database account lifecycle.
+
+The frontend handoff for Sharapat is in
+[`docs/frontend-v03-handoff.md`](../docs/frontend-v03-handoff.md).
