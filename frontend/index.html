@@ -16,9 +16,10 @@
       <span aria-hidden="true">/</span>
       <button type="button" data-language="kk" lang="kk" aria-pressed="false">ҚАЗ</button>
     </div>
+    <button id="logout" class="secondary-button" type="button" data-i18n="logout" hidden>Выйти</button>
   </header>
   <main id="app">
-    <section class="login-panel" aria-labelledby="login-title">
+    <section id="login-screen" class="login-panel" aria-labelledby="login-title">
       <h1 id="login-title" data-i18n="loginTitle">Вход в систему</h1>
       <p class="muted" data-i18n="loginHint">Введите рабочий номер телефона и пароль.</p>
       <form id="login-form" novalidate autocomplete="off">
@@ -37,11 +38,141 @@
           <p id="password-error" class="field-error" aria-live="polite" hidden></p>
         </div>
         <button id="submit-login" class="primary-button" type="submit" data-i18n="signIn">Войти</button>
-        <p id="login-status" class="status" role="status" data-i18n="backendUnavailable">Подключение к серверу ещё не готово. Вход пока недоступен.</p>
+        <p id="login-status" class="status" role="status"></p>
       </form>
       <p class="access-note muted" data-i18n="accessNote">Нет доступа? Обратитесь к администратору</p>
       <noscript>Для работы страницы включите JavaScript. / Бетті пайдалану үшін JavaScript қосыңыз.</noscript>
     </section>
+    <section id="employee-screen" class="employee-panel" aria-labelledby="employee-title" hidden>
+      <div class="content-block employee-profile">
+        <h1 id="employee-title" data-i18n="employeeTitle">Кабинет сотрудника</h1>
+        <p id="employee-name" class="employee-name"></p>
+        <p id="employee-position" class="muted"></p>
+      </div>
+      <div class="content-block employee-actions">
+        <a class="primary-button action-link" href="#/new-ticket" data-i18n="createTicket">Создать обращение</a>
+      </div>
+      <section class="content-block tickets-block" aria-labelledby="my-tickets-title">
+        <h2 id="my-tickets-title" data-i18n="myTickets">Мои обращения</h2>
+        <p id="tickets-status" class="status" role="status"></p>
+        <button id="retry-tickets" class="secondary-button" type="button" data-i18n="retry" hidden>Повторить</button>
+        <ul id="ticket-list" class="ticket-list"></ul>
+        <nav id="ticket-pagination" class="pagination" data-i18n-label="paginationLabel" aria-label="Страницы обращений" hidden>
+          <button id="previous-page" class="secondary-button" type="button" data-i18n="previousPage">Предыдущая</button>
+          <p id="page-number"></p>
+          <button id="next-page" class="secondary-button" type="button" data-i18n="nextPage">Следующая</button>
+        </nav>
+      </section>
+    </section>
+    <section id="new-ticket-screen" class="employee-panel" aria-labelledby="new-ticket-title" hidden>
+      <a class="back-link" href="#/employee" data-i18n="backToTickets">Назад к обращениям</a>
+      <div class="content-block">
+        <h1 id="new-ticket-title" data-i18n="newTicketTitle">Новое обращение</h1>
+        <form id="new-ticket-form" novalidate>
+          <fieldset id="ticket-fields" class="ticket-fields">
+            <legend class="visually-hidden" data-i18n="newTicketTitle">Новое обращение</legend>
+            <div class="field">
+              <label for="ticket-type" data-i18n="ticketType">Тип обращения</label>
+              <select id="ticket-type" name="type" required aria-describedby="ticket-type-error">
+                <option value="" data-i18n="chooseType">Выберите тип</option>
+                <option value="problem" data-i18n="problem">Проблема</option>
+                <option value="suggestion" data-i18n="suggestion">Предложение</option>
+                <option value="complaint" data-i18n="complaint">Жалоба</option>
+                <option value="gratitude" data-i18n="gratitude">Благодарность</option>
+              </select>
+              <p id="ticket-type-error" class="field-error" aria-live="polite" hidden></p>
+            </div>
+            <div class="field">
+              <label for="ticket-title" data-i18n="ticketTitleLabel">Тема</label>
+              <input id="ticket-title" name="title" type="text" required aria-describedby="ticket-title-hint ticket-title-error">
+              <p id="ticket-title-hint" class="hint" data-i18n="ticketTitleHint">От 5 до 120 символов.</p>
+              <p id="ticket-title-error" class="field-error" aria-live="polite" hidden></p>
+            </div>
+            <div class="field">
+              <label for="ticket-description" data-i18n="ticketDescription">Описание</label>
+              <textarea id="ticket-description" name="description" rows="7" required aria-describedby="ticket-description-hint ticket-description-error"></textarea>
+              <p id="ticket-description-hint" class="hint" data-i18n="ticketDescriptionHint">От 10 до 4000 символов.</p>
+              <p id="ticket-description-error" class="field-error" aria-live="polite" hidden></p>
+            </div>
+            <button id="send-ticket" class="primary-button" type="submit" data-i18n="sendTicket">Отправить обращение</button>
+          </fieldset>
+        </form>
+        <p id="create-ticket-status" class="status" role="status"></p>
+        <a id="created-ticket-details" class="back-link" data-i18n="ticketDetails" hidden>Подробнее</a>
+        <a id="created-ticket-list" class="back-link" href="#/employee" data-i18n="goToTickets" hidden>Перейти к моим обращениям</a>
+      </div>
+    </section>
+    <section id="ticket-detail-screen" class="employee-panel" aria-labelledby="ticket-view-title" hidden>
+      <a id="detail-back" class="back-link" href="#/employee" data-i18n="backToTickets">Назад к обращениям</a>
+      <h1 id="ticket-view-title" data-i18n="ticketViewTitle">Обращение</h1>
+      <div id="ticket-detail-state" class="content-block">
+        <p id="ticket-detail-status" role="status"></p>
+        <button id="retry-ticket-detail" class="secondary-button" type="button" data-i18n="retry" hidden>Повторить</button>
+      </div>
+      <div id="ticket-detail-content" class="ticket-detail-content" hidden>
+        <section id="detail-author-block" class="content-block" aria-labelledby="detail-author-heading" hidden>
+          <h2 id="detail-author-heading" data-i18n="ticketAuthor">Автор обращения</h2>
+          <p id="detail-author-name" class="employee-name"></p>
+          <p id="detail-author-position" class="muted"></p>
+          <p class="hint" data-i18n="adminActionsNext">На этом шаге доступен просмотр. Управление статусом добавим следующим шагом.</p>
+        </section>
+        <section class="content-block" aria-labelledby="detail-title">
+          <p id="detail-meta" class="hint"></p>
+          <h2 id="detail-title"></h2>
+          <time id="detail-date" class="hint"></time>
+          <p id="detail-status" class="ticket-status"></p>
+          <h3 data-i18n="ticketDescription">Описание</h3>
+          <p id="detail-description" class="ticket-text"></p>
+        </section>
+        <section class="content-block" aria-labelledby="detail-response-heading">
+          <h2 id="detail-response-heading" data-i18n="managementReply">Ответ администрации</h2>
+          <p id="detail-response" class="ticket-text"></p>
+        </section>
+        <section class="content-block" aria-labelledby="detail-history-heading">
+          <h2 id="detail-history-heading" data-i18n="ticketHistory">История изменений</h2>
+          <ol id="detail-history" class="ticket-history"></ol>
+          <p id="detail-no-history" class="hint" data-i18n="noHistory" hidden>История пока пуста.</p>
+        </section>
+      </div>
+    </section>
+    <section id="admin-screen" class="admin-panel" aria-labelledby="admin-title" hidden>
+      <div class="content-block">
+        <h1 id="admin-title" data-i18n="adminTitle">Панель администратора</h1>
+        <p id="admin-name" class="employee-name"></p>
+      </div>
+      <section class="content-block" aria-labelledby="admin-queue-heading">
+        <h2 id="admin-queue-heading" data-i18n="adminQueue">Обращения сотрудников</h2>
+        <div class="admin-filter">
+          <label for="admin-status-filter" data-i18n="statusFilter">Статус</label>
+          <select id="admin-status-filter">
+            <option value="" data-i18n="allStatuses">Все</option>
+            <option value="new" data-i18n="new">Новое</option>
+            <option value="in_review" data-i18n="in_review">На рассмотрении</option>
+            <option value="resolved" data-i18n="resolved">Решено</option>
+            <option value="rejected" data-i18n="rejected">Отклонено</option>
+          </select>
+        </div>
+        <p id="admin-queue-status" class="status" role="status"></p>
+        <button id="retry-admin-queue" class="secondary-button" type="button" data-i18n="retry" hidden>Повторить</button>
+        <table id="admin-ticket-table" class="admin-ticket-table" hidden>
+          <caption class="visually-hidden" data-i18n="adminQueue">Обращения сотрудников</caption>
+          <thead><tr>
+            <th scope="col" data-i18n="ticketViewTitle">Обращение</th>
+            <th scope="col" data-i18n="ticketAuthor">Автор обращения</th>
+            <th scope="col" data-i18n="createdAt">Создано</th>
+            <th scope="col" data-i18n="statusFilter">Статус</th>
+            <th scope="col" data-i18n="ticketDetails">Подробнее</th>
+          </tr></thead>
+          <tbody id="admin-ticket-rows"></tbody>
+        </table>
+        <nav id="admin-pagination" class="pagination" data-i18n-label="paginationLabel" aria-label="Страницы обращений" hidden>
+          <button id="admin-previous-page" class="secondary-button" type="button" data-i18n="previousPage">Предыдущая</button>
+          <p id="admin-page-number"></p>
+          <button id="admin-next-page" class="secondary-button" type="button" data-i18n="nextPage">Следующая</button>
+        </nav>
+      </section>
+    </section>
+    <p id="session-status" class="session-status status" role="status"></p>
   </main>
 </body>
 </html>

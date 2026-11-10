@@ -1,5 +1,9 @@
-import { login, normalizePhone } from './api.js';
+import { login, logout, getMe, normalizePhone } from './api.js';
 import { setLanguage, t } from './i18n.js';
+import { openEmployee, closeEmployee, renderEmployee } from './employee.js';
+import { openNewTicket, resetNewTicket, renderNewTicket } from './new-ticket.js';
+import { openTicketDetails, closeTicketDetails, renderTicketDetails } from './ticket.js';
+import { openAdminQueue, closeAdminQueue, renderAdminQueue } from './admin.js';
 
 const form = document.querySelector('#login-form');
 const phone = document.querySelector('#phone');
@@ -9,6 +13,26 @@ const submit = document.querySelector('#submit-login');
 const status = document.querySelector('#login-status');
 const errors = { phone: '', password: '' };
 let submitting = false;
+let user = null;
+let restoringSession = true;
+let sessionVersion = 0;
+const logoutButton = document.querySelector('#logout');
+const sessionStatus = document.querySelector('#session-status');
+
+function showStatus(element, key = '') {
+  if (key) element.dataset.i18n = key;
+  else delete element.dataset.i18n;
+  element.textContent = key ? t(key) : '';
+}
+
+function errorKey(error) {
+  return ({
+    INVALID_CREDENTIALS: 'invalidCredentials', RATE_LIMITED: 'rateLimited',
+    ACCOUNT_DISABLED: 'accountDisabled', INVALID_ORIGIN: 'invalidOrigin',
+    VALIDATION_ERROR: 'invalidInput', NETWORK_ERROR: 'networkError',
+    UNAUTHORIZED: 'sessionExpired', SERVICE_UNAVAILABLE: 'serviceUnavailable',
+  })[error.message] ?? 'apiUnavailable';
+}
 
 function renderErrors() {
   for (const input of [phone, password]) {
@@ -30,6 +54,10 @@ document.querySelectorAll('[data-language]').forEach((button) => {
   button.addEventListener('click', () => {
     setLanguage(button.dataset.language);
     renderErrors();
+    renderEmployee();
+    renderNewTicket();
+    renderTicketDetails();
+    renderAdminQueue();
   });
 });
 
@@ -42,8 +70,7 @@ for (const input of [phone, password]) {
   input.addEventListener('input', () => {
     errors[input.name] = '';
     renderErrors();
-    status.dataset.i18n = 'backendUnavailable';
-    status.textContent = t('backendUnavailable');
+    showStatus(status);
   });
 }
 
@@ -63,8 +90,7 @@ form.addEventListener('submit', async (event) => {
   renderErrors();
   const invalid = [phone, password].find((input) => errors[input.name]);
   if (invalid) {
-    status.dataset.i18n = 'backendUnavailable';
-    status.textContent = t('backendUnavailable');
+    showStatus(status);
     invalid.focus();
     return;
   }
@@ -73,11 +99,20 @@ form.addEventListener('submit', async (event) => {
   submit.dataset.i18n = 'signingIn';
   submit.textContent = t('signingIn');
   form.setAttribute('aria-busy', 'true');
+  showStatus(status);
+  showStatus(sessionStatus);
+  const version = ++sessionVersion;
   try {
-    await login({ phone: normalizePhone(phone.value), password: password.value });
+    const response = await login({ phone: normalizePhone(phone.value), password: password.value });
+    if (version !== sessionVersion) return;
+    user = response.data.user;
+    password.value = '';
+    password.type = 'password';
+    renderPasswordToggle();
+    history.replaceState(null, '', user.role === 'admin' ? '#/admin' : '#/employee');
+    route();
   } catch (error) {
-    status.dataset.i18n = error.message === 'BACKEND_NOT_CONNECTED' ? 'loginUnavailable' : 'backendUnavailable';
-    status.textContent = t(status.dataset.i18n);
+    showStatus(status, errorKey(error));
   } finally {
     submitting = false;
     submit.disabled = false;
@@ -87,13 +122,74 @@ form.addEventListener('submit', async (event) => {
   }
 });
 
-// Only the login screen exists at this stage; other SPA routes come later.
 function route() {
-  if (location.hash !== '#/login') {
-    history.replaceState(null, '', `${location.pathname}${location.search}#/login`);
+  const employee = user?.role === 'employee';
+  const admin = user?.role === 'admin';
+  const creating = employee && location.hash === '#/new-ticket';
+  const detailMatch = employee ? location.hash.match(/^#\/tickets\/(\d+)$/) : admin ? location.hash.match(/^#\/admin\/tickets\/(\d+)$/) : null;
+  const viewing = Boolean(detailMatch);
+  const target = employee ? (creating ? '#/new-ticket' : viewing ? location.hash : '#/employee') : admin ? (viewing ? location.hash : '#/admin') : '#/login';
+  if (!restoringSession && location.hash !== target) history.replaceState(null, '', target);
+  document.querySelector('#login-screen').hidden = employee || admin;
+  document.querySelector('#employee-screen').hidden = !employee || creating || viewing;
+  document.querySelector('#new-ticket-screen').hidden = !creating;
+  document.querySelector('#ticket-detail-screen').hidden = !viewing;
+  document.querySelector('#admin-screen').hidden = !admin || viewing;
+  document.body.classList.toggle('employee-screen', employee || viewing);
+  document.body.classList.toggle('admin-screen', admin && !viewing);
+  logoutButton.hidden = !user;
+  closeEmployee();
+  closeTicketDetails();
+  closeAdminQueue(!admin);
+  if (creating) openNewTicket();
+  else if (viewing) openTicketDetails(detailMatch[1], admin);
+  else if (employee) openEmployee(user);
+  else if (admin) openAdminQueue(user);
+}
+
+window.addEventListener('session-ended', () => {
+  sessionVersion++;
+  user = null;
+  resetNewTicket();
+  route();
+  showStatus(status, 'sessionExpired');
+});
+
+logoutButton.addEventListener('click', async () => {
+  logoutButton.disabled = true;
+  showStatus(sessionStatus);
+  try {
+    await logout();
+    sessionVersion++;
+    user = null;
+    resetNewTicket();
+    route();
+    showStatus(status);
+  } catch (error) {
+    showStatus(sessionStatus, errorKey(error));
+  } finally { logoutButton.disabled = false; }
+});
+
+async function restoreSession() {
+  const version = sessionVersion;
+  submit.disabled = true;
+  showStatus(status, 'checkingSession');
+  try {
+    const response = await getMe();
+    if (version !== sessionVersion) return;
+    user = response.data.user;
+    showStatus(status);
+  } catch (error) {
+    if (error.message === 'UNAUTHORIZED') showStatus(status);
+    else showStatus(status, errorKey(error));
+  } finally {
+    restoringSession = false;
+    submit.disabled = false;
+    route();
   }
 }
 window.addEventListener('hashchange', route);
-route();
 setLanguage('ru');
 renderPasswordToggle();
+route();
+restoreSession();
