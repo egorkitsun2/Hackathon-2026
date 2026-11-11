@@ -1,5 +1,5 @@
-import { getMyTickets } from './api.js?v=writing-help-20261111-1';
-import { t } from './i18n.js?v=writing-help-20261111-1';
+import { getMyTickets } from './api.js?v=saas-redesign-20261111-1';
+import { t } from './i18n.js?v=saas-redesign-20261111-1';
 
 const screen = document.querySelector('#employee-screen');
 const list = document.querySelector('#ticket-list');
@@ -29,12 +29,13 @@ export function renderEmployee() {
   }
   list.replaceChildren();
   status.textContent = state ? t(state) : '';
+  status.dataset.tone = state === 'ticketsError' ? 'error' : 'info';
   retry.hidden = state !== 'ticketsError';
   pagination.hidden = !result || result.pagination.total <= result.pagination.limit;
   if (!result) return;
   for (const ticket of result.data) {
     const item = document.createElement('li');
-    item.className = 'ticket';
+    item.className = 'ticket ticket-card';
     const meta = textElement('p', `${t(ticket.type)} · № ${ticket.id}`, 'hint');
     const title = textElement('h3', ticket.title);
     const time = textElement('time', new Intl.DateTimeFormat(document.documentElement.lang === 'kk' ? 'kk-KZ' : 'ru-KZ', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(ticket.created_at)), 'hint');

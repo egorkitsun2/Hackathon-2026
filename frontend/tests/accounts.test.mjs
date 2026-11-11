@@ -229,3 +229,15 @@ test('reset timeout unlocks modal and never retries the mutation', async () => {
   assert.equal(calls, 1);
   await h.get('confirm-reset-password').events.click(); assert.equal(calls, 1);
 });
+
+test('employee creation result is modal and native close erases its one-time password', async () => {
+  const h = harness(); h.context.openAccounts('users'); await flush(); fillEmployee(h);
+  await h.submit('create-user-form');
+  assert.equal(h.get('user-result-dialog').open, true);
+  assert.equal(h.get('temporary-password').textContent, 'test-only-secret');
+  h.get('user-result-dialog').open = false; h.get('user-result-dialog').events.close();
+  assert.equal(h.get('temporary-password').textContent, '');
+  assert.equal(h.get('user-created').hidden, true);
+  h.get('create-user-panel').open = true; h.context.closeAccounts();
+  assert.equal(h.get('create-user-panel').open, false);
+});

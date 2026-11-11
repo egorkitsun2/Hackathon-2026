@@ -14,7 +14,7 @@ const flush = () => new Promise(resolve => setImmediate(resolve));
 function harness(getTickets = fixtureTickets) {
   function element() {
     return {
-      children: [], events: {}, attributes: {}, hidden: false,
+      children: [], events: {}, attributes: {}, dataset: {}, hidden: false,
       append(...children) { this.children.push(...children); },
       replaceChildren() { this.children = []; },
       setAttribute(key, value) { this.attributes[key] = value; },

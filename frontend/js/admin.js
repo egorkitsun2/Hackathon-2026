@@ -1,5 +1,5 @@
-import { getAdminTickets, getAdminStats } from './api.js?v=writing-help-20261111-1';
-import { t } from './i18n.js?v=writing-help-20261111-1';
+import { getAdminTickets, getAdminStats } from './api.js?v=saas-redesign-20261111-1';
+import { t } from './i18n.js?v=saas-redesign-20261111-1';
 
 const screen = document.querySelector('#admin-screen');
 const filter = document.querySelector('#admin-status-filter');
@@ -29,6 +29,7 @@ function renderStats() {
   const list = document.querySelector('#admin-stats');
   list.replaceChildren();
   document.querySelector('#admin-stats-status').textContent = statsState ? t(statsState) : '';
+  document.querySelector('#admin-stats-status').dataset.tone = ['statsError', 'accountsForbidden'].includes(statsState) ? 'error' : 'info';
   document.querySelector('#retry-admin-stats').hidden = statsState !== 'statsError';
   if (!stats) return;
   for (const [group, field, label] of metrics) {
@@ -70,6 +71,7 @@ export function renderAdminQueue() {
   document.querySelector('#admin-name').textContent = profile ? `${t('greeting')}, ${profile.full_name}` : '';
   rows.replaceChildren();
   status.textContent = state ? t(state) : '';
+  status.dataset.tone = ['adminQueueError', 'adminForbidden'].includes(state) ? 'error' : 'info';
   retry.hidden = state !== 'adminQueueError';
   table.hidden = !result?.data.length;
   pagination.hidden = !result || result.pagination.total <= result.pagination.limit;
