@@ -9,7 +9,7 @@ import { transaction } from './db.js'
 import { AttachmentStorage, attachmentView, defaultAttachmentsDir, MAX_ATTACHMENTS } from './attachments.js'
 import type { AttachmentRow } from './attachments.js'
 import { accountProfile, employeeView, newPassword, temporaryPassword, userId } from './accounts.js'
-import { allowLogin, digest, hashPassword, newSessionToken, normalizePhone, SESSION_SECONDS, verifyPassword } from './security.js'
+import { allowLogin, loginRetryAfter, recordFailedLogin, digest, hashPassword, newSessionToken, normalizePhone, SESSION_SECONDS, verifyPassword } from './security.js'
 import { ApiError, invalid, jsonBody, pagination, text, ticketId } from './validation.js'
 import type { AppEnv, Role, Ticket, TicketStatus, User } from './types.js'
 
@@ -107,13 +107,16 @@ export async function createApp({ db, origin, production = false, attachmentsDir
     }
     // Use the socket peer only; client-supplied forwarding headers are not trusted.
     const ip = clientIp(c)
-    if (!allowLogin(db, phone, ip)) {
-      c.header('Retry-After', '900')
+    if (!allowLogin(db, phone, ip, false)) {
+      c.header('Retry-After', String(loginRetryAfter(db, phone, ip)))
       throw new ApiError(429, 'RATE_LIMITED', 'Too many login attempts')
     }
     const user = db.prepare('SELECT * FROM users WHERE phone = ?').get(phone) as unknown as User | undefined
     const valid = await passwordWork(() => verifyPassword(user?.password_hash ?? dummyHash, body.password as string))
-    if (!valid || !user) throw new ApiError(401, 'INVALID_CREDENTIALS', 'Invalid phone or password')
+    if (!valid || !user) {
+      recordFailedLogin(db, phone)
+      throw new ApiError(401, 'INVALID_CREDENTIALS', 'Invalid phone or password')
+    }
     const token = newSessionToken()
     const now = new Date()
     const current = transaction(db, () => {
@@ -152,7 +155,7 @@ export async function createApp({ db, origin, production = false, attachmentsDir
     if (body.current_password === password) return invalid({ new_password: 'PASSWORD_MUST_DIFFER' })
     const user = c.get('user')
     if (!allowLogin(db, `password-change:${user.id}`, clientIp(c))) {
-      c.header('Retry-After', '900')
+      c.header('Retry-After', String(loginRetryAfter(db, `password-change:${user.id}`, clientIp(c))))
       throw new ApiError(429, 'RATE_LIMITED', 'Too many password change attempts')
     }
     const passwordHash = await passwordWork(async () => {

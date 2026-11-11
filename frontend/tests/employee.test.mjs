@@ -91,3 +91,16 @@ test('late responses cannot overwrite the currently opened employee view', async
   assert.equal(get('#tickets-status').textContent, 'ru:noTickets');
   assert.equal(get('#ticket-list').children.length, 0);
 });
+
+
+test('return to employee list keeps its page; account change and logout reset it', async () => {
+  const h = harness(); h.context.openEmployee(demoUser); await flush();
+  h.get('#next-page').events.click(); await flush();
+  h.context.closeEmployee(); h.context.openEmployee(demoUser); await flush();
+  assert.match(h.get('#page-number').textContent, /2$/);
+  h.context.closeEmployee(true); h.context.openEmployee(demoUser); await flush();
+  assert.match(h.get('#page-number').textContent, /1$/);
+  h.get('#next-page').events.click(); await flush();
+  h.context.closeEmployee(); h.context.openEmployee({ ...demoUser, id: 999 }); await flush();
+  assert.match(h.get('#page-number').textContent, /1$/);
+});

@@ -1,5 +1,5 @@
-import { getMyTickets } from './api.js?v=password-reset-20261111-1';
-import { t } from './i18n.js?v=password-reset-20261111-1';
+import { getMyTickets } from './api.js?v=audit-fixes-20261111-1';
+import { t } from './i18n.js?v=audit-fixes-20261111-1';
 
 const screen = document.querySelector('#employee-screen');
 const list = document.querySelector('#ticket-list');
@@ -11,6 +11,7 @@ const next = document.querySelector('#next-page');
 let profile;
 let result;
 let page = 1;
+let ownerId = null;
 let state = 'loadingTickets';
 let requestId = 0;
 
@@ -59,6 +60,8 @@ async function loadTickets() {
     const ticketsResponse = await getMyTickets({ page });
     if (id !== requestId) return;
     result = ticketsResponse;
+    const lastPage = Math.max(1, Math.ceil(result.pagination.total / result.pagination.limit));
+    if (page > lastPage) { page = lastPage; await loadTickets(); return; }
     state = result.data.length ? '' : 'noTickets';
   } catch {
     if (id !== requestId) return;
@@ -72,12 +75,14 @@ async function loadTickets() {
 }
 
 export function openEmployee(user) {
+  if (ownerId !== user.id) page = 1;
+  ownerId = user.id;
   profile = user;
-  page = 1;
   loadTickets();
 }
 
-export function closeEmployee() {
+export function closeEmployee(reset = false) {
+  if (reset) { page = 1; ownerId = null; }
   requestId++;
   profile = null;
   result = null;

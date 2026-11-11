@@ -1,6 +1,6 @@
-import { createTicket, uploadAttachment, getTicket } from './api.js?v=password-reset-20261111-1';
-import { validateAttachment } from './attachment-validation.js?v=password-reset-20261111-1';
-import { t } from './i18n.js?v=password-reset-20261111-1';
+import { createTicket, uploadAttachment, getTicket } from './api.js?v=audit-fixes-20261111-1';
+import { validateAttachment } from './attachment-validation.js?v=audit-fixes-20261111-1';
+import { t } from './i18n.js?v=audit-fixes-20261111-1';
 
 const form = document.querySelector('#new-ticket-form');
 const fields = document.querySelector('#ticket-fields');

@@ -95,6 +95,15 @@ A session cookie is set via Set-Cookie and is never returned in JSON.
 GET /auth/me returns exactly the same data.user shape.
 POST /auth/logout returns 204 without a response body.
 
+Login rate limiting: the phone bucket counts incorrect-password attempts only
+(5 per 15-minute window). Successful logins do not consume that phone budget.
+The separate socket-IP capacity bucket still counts all attempts (60 per window),
+including successful logins and shared password-change work. Counters persist
+across restarts. HTTP 429 includes Retry-After with the actual remaining whole
+seconds until all currently blocking buckets expire; frontend may display a
+countdown. Successful login does not clear prior failures. Existing counters from
+older server versions expire naturally; deployment does not delete them.
+
 ## Ticket enums and validation
 
 type: problem | suggestion | complaint | gratitude

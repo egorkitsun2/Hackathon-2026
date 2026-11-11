@@ -9,6 +9,7 @@ const flush = () => new Promise(resolve => setImmediate(resolve));
 function harness({ restoredUser = null, loginError = null, hash = '#/employee', required = false } = {}) {
   const elements = new Map();
   const handlers = {};
+  const clock = { now: Date.now(), tick: null };
   const document = {
     body: { classList: { toggle() {} } },
     querySelector(selector) {
@@ -28,12 +29,14 @@ function harness({ restoredUser = null, loginError = null, hash = '#/employee', 
   const location = { hash };
   const context = vm.createContext({
     document, location,
+    Date: class extends Date { static now() { return clock.now; } },
+    setInterval(callback) { clock.tick = callback; return 1; }, clearInterval() { clock.tick = null; },
     history: { replaceState(a, b, hash) { location.hash = hash; } },
     window: { addEventListener(name, callback) { handlers[name] = callback; } },
     normalizePhone: value => value === '87000000001' ? '+77000000001' : null,
-    login: async () => { if (loginError) throw new Error(loginError); return { data: { user }, meta: { passwordChangeRequired: required } }; },
+    login: async () => { if (loginError) throw typeof loginError === 'string' ? new Error(loginError) : loginError; return { data: { user }, meta: { passwordChangeRequired: required } }; },
     getMe: async () => { if (!restoredUser) throw new Error('UNAUTHORIZED'); return { data: { user: restoredUser }, meta: { passwordChangeRequired: required } }; },
-    logout: async () => null,
+    logout: async () => null, invalidateSessionRequests() {},
     openEmployee: profile => opened.push(profile), closeEmployee() {}, renderEmployee() {},
     openNewTicket() {}, resetNewTicket() {}, renderNewTicket() {},
     openTicketDetails: id => detailsOpened.push(id), closeTicketDetails() {}, renderTicketDetails() {},
@@ -42,7 +45,7 @@ function harness({ restoredUser = null, loginError = null, hash = '#/employee', 
     setLanguage() {}, t: key => key,
   });
   vm.runInContext(source, context);
-  return { get: selector => document.querySelector(selector), location, opened, detailsOpened, adminsOpened, handlers };
+  return { get: selector => document.querySelector(selector), location, opened, detailsOpened, adminsOpened, handlers, clock };
 }
 
 test('anonymous users must log in; successful login opens real employee and clears password', async () => {
@@ -158,4 +161,19 @@ test('server-required change event guards an existing session; employee cannot o
   h.handlers['session-ended']({ code: 'ACCOUNT_DISABLED' });
   assert.equal(h.location.hash, '#/login');
   assert.equal(h.get('#login-status').textContent, 'accountDisabled');
+});
+
+
+test('login countdown follows Retry-After and enables retry after expiry', async () => {
+  const error = new Error('RATE_LIMITED'); error.retryAfter = 3;
+  const h = harness({ loginError: error }); await flush();
+  h.get('#phone').value = '87000000001'; h.get('#password').value = 'test-only';
+  await h.get('#login-form').events.submit({ preventDefault() {} });
+  assert.match(h.get('#login-status').textContent, /00:03/);
+  assert.equal(h.get('#submit-login').disabled, true);
+  h.clock.now += 2000; h.clock.tick();
+  assert.match(h.get('#login-status').textContent, /00:01/);
+  h.clock.now += 1000; h.clock.tick();
+  assert.equal(h.get('#submit-login').disabled, false);
+  assert.equal(h.get('#login-status').textContent, 'loginRetryReady');
 });
