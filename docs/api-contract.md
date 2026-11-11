@@ -2,7 +2,8 @@
 
 Status: MVP v0.4 attachments on Node.js + Hono and SQLite.
 Existing routes retain their fields; ticket details additionally return attachments.
-Account lifecycle and admin statistics routes remain unchanged.
+Existing account lifecycle and admin statistics routes remain unchanged.
+An additive admin-only employee password reset is documented below.
 
 Base path: /api/v1. Request and response bodies are JSON except multipart attachment
 uploads and binary downloads documented below. Dates are UTC ISO 8601
@@ -35,6 +36,7 @@ are translated on the frontend (RU/KZ); API enums are language-neutral.
 | GET | /admin/users | Admin | 200 |
 | GET | /admin/stats | Admin | 200 |
 | PATCH | /admin/users/:id | Admin | 200 |
+| POST | /admin/users/:id/reset-password | Admin, employee target only | 200 |
 | POST | /auth/change-password | Session, including temporary-password sessions | 200 |
 
 The admin and employee detail screens use **the same**
@@ -412,8 +414,9 @@ The temporary password uses 24 cryptographically random bytes and is stored
 only as an Argon2id hash. This response is the **only API disclosure** of the
 password; deliver it privately to the employee. It is never retrievable from
 GET endpoints, database plaintext or server logs. Responses use Cache-Control:
-no-store. There is no password-reset/invitation flow in this stage; if a create
-response is lost, the account/password is not recoverable through another GET.
+no-store. There is no public self-service recovery or invitation flow. If a create
+response is lost, an administrator can explicitly reset the password as described below;
+the previous plaintext password is never recoverable through GET.
 
 ### List employees
 
@@ -447,6 +450,75 @@ Existing cookies then return 401 UNAUTHORIZED; login with correct credentials
 returns 403 ACCOUNT_DISABLED while blocked. Activation does not revive revoked
 sessions or clear must_change_password. No user deletion/role changes are exposed.
 
+### Reset a forgotten employee password (admin only)
+
+POST /admin/users/:id/reset-password requires a current active administrator
+session, no pending mandatory password change, and the exact trusted Origin.
+The request has no fields: send no body, or application/json with `{}`. Nonempty
+bodies use strict JSON validation; extra fields (including password, role and
+is_active) are rejected. The existing 32 KiB request limit applies.
+
+200 result (placeholder only, never a real credential):
+
+```json
+{
+  "data": {
+    "user": {
+      "id": 5,
+      "phone": "+77001234567",
+      "full_name": "Employee One",
+      "department": "Warehouse",
+      "position": "Worker",
+      "role": "employee",
+      "is_active": true,
+      "must_change_password": true,
+      "created_at": "2026-11-10T12:00:00.000Z"
+    },
+    "temporary_password": "<generated-once-32-character-password>"
+  }
+}
+```
+
+`user` is the existing employeeView shape. The server generates 24 random bytes
+(base64url, 32 characters), hashes the password with the existing Argon2id
+settings, sets must_change_password=1 and revokes **all** employee sessions in
+one SQLite transaction. is_active is preserved: a blocked employee remains
+blocked and cannot log in until separately activated. No schema migration is
+needed. Existing tickets, histories and other accounts are unchanged.
+
+Only the successful response discloses the temporary password. It is not saved
+as plaintext, logged, written to files or retrievable from any GET endpoint.
+Responses use Cache-Control: no-store. After signing in with the temporary
+password, the employee must use the existing POST /auth/change-password flow;
+X-Password-Change-Required is true and ticket routes return 403
+PASSWORD_CHANGE_REQUIRED until the change succeeds. Old passwords and revoked
+sessions no longer work; activation never restores a revoked session.
+
+Admin authorization/session and the target role are rechecked under the SQLite
+write lock after Argon2. Password work shares the existing two-task limit with
+login, account creation and password changes. Overload returns 503
+SERVICE_UNAVAILABLE. Sequential resets each generate a new password and revoke
+all employee sessions again. Overlapping resets (or another password change)
+that started from the same hash cannot both overwrite it: the stale request
+returns 409 PASSWORD_CHANGED with no temporary password. SQLite errors roll
+back the hash, flag and session revocations together (500 INTERNAL_ERROR).
+
+- 401 UNAUTHORIZED: no valid session, including a session revoked during hashing.
+- 403 FORBIDDEN: employee caller, administrator target or self-reset.
+- 403 ACCOUNT_DISABLED / PASSWORD_CHANGE_REQUIRED: current admin account is
+  disabled / has a pending password change.
+- 403 INVALID_ORIGIN: missing or different Origin.
+- 404 NOT_FOUND: malformed ID or target no longer exists.
+- 400 VALIDATION_ERROR / 415 UNSUPPORTED_MEDIA_TYPE: invalid nonempty body.
+- 409 PASSWORD_CHANGED: password changed concurrently; refresh the employee
+  list before deciding whether another explicit reset is needed.
+- 503 SERVICE_UNAVAILABLE: Argon2 capacity is occupied; no reset was committed.
+
+The operation is **not idempotent**. Disable duplicate UI submissions. If the
+response is lost or times out, do not retry automatically: the password may
+already have changed. A later administrator-confirmed reset invalidates the
+previous temporary password; GET cannot recover it.
+
 ### Change password
 
 POST /auth/change-password (session and exact Origin required):
@@ -477,7 +549,8 @@ The endpoint works both for mandatory first changes and later authenticated
 changes. It permits 5 attempts per account in 15 minutes; the existing 60/IP
 bucket is shared with login attempts. Both success and failure count. 429 uses
 RATE_LIMITED with Retry-After. Password work, including login, employee creation
-and changes, shares the existing two-task Argon2 concurrency bound; overload
+and changes (including administrative resets), shares the existing two-task
+Argon2 concurrency bound; overload
 returns 503 SERVICE_UNAVAILABLE. Sessions and account state are rechecked under
 the write lock after password work. A session revoked concurrently returns
 401 UNAUTHORIZED; a concurrent changed hash, if the session remains valid,
@@ -491,9 +564,10 @@ Argon2 hashes, roles, tickets, histories and sessions are retained. Only newly
 created employees receive must_change_password=1 automatically. Demo seed
 accounts remain compatible with v0.2; seed is not the bootstrap command.
 
-All three /admin/users routes require a current active administrator session.
+All /admin/users routes require a current active administrator session.
 Anonymous requests return 401; employees return 403 FORBIDDEN. All new mutation
-routes retain the existing exact Origin check, JSON media type, 32 KiB body
+routes retain the existing exact Origin check, JSON validation (reset also accepts
+an empty body), 32 KiB body
 limit, strict validation and generic error envelopes. Account lifecycle adds no
 public registration or invitations. Attachments are specified separately below.
 

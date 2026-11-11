@@ -211,6 +211,28 @@ export async function createApp({ db, origin, production = false, attachmentsDir
     // The temporary password is returned exactly once, only to the authenticated administrator.
     return c.json({ data: { user: employeeView(user), temporary_password: password } }, 201)
   })
+  app.post('/api/v1/admin/users/:id/reset-password', authenticated('admin'), async (c) => {
+    const id = userId(c.req.param('id'))
+    // No input password is accepted; allow an empty request or the empty JSON object.
+    if ((await c.req.text()).length) await jsonBody(c, [])
+    const employee = db.prepare('SELECT * FROM users WHERE id = ?').get(id) as unknown as User | undefined
+    if (!employee) throw new ApiError(404, 'NOT_FOUND', 'Employee not found')
+    if (employee.role !== 'employee' || id === c.get('user').id) throw new ApiError(403, 'FORBIDDEN', 'Only employee passwords can be reset')
+    const password = temporaryPassword()
+    const passwordHash = await passwordWork(() => hashPassword(password))
+    const user = transaction(db, () => {
+      const admin = sessionUser(c.get('tokenHash'), 'admin')
+      const current = db.prepare('SELECT * FROM users WHERE id = ?').get(id) as unknown as User | undefined
+      if (!current) throw new ApiError(404, 'NOT_FOUND', 'Employee not found')
+      if (current.role !== 'employee' || id === admin.id) throw new ApiError(403, 'FORBIDDEN', 'Only employee passwords can be reset')
+      if (current.password_hash !== employee.password_hash) throw new ApiError(409, 'PASSWORD_CHANGED', 'Password changed during reset; refresh before retrying')
+      db.prepare('UPDATE users SET password_hash = ?, must_change_password = 1 WHERE id = ?').run(passwordHash, id)
+      db.prepare('DELETE FROM sessions WHERE user_id = ?').run(id)
+      return { ...current, must_change_password: 1 }
+    })
+    // As with employee creation, disclose only in this successful, non-cacheable response.
+    return c.json({ data: { user: employeeView(user), temporary_password: password } })
+  })
   app.get('/api/v1/admin/users', authenticated('admin'), (c) => {
     const { page, limit, offset } = pagination(c)
     return c.json(transaction(db, () => {
