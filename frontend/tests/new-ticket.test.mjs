@@ -10,8 +10,16 @@ function harness(createTicket = async () => ({ data: { id: 42 } })) {
   const elements = new Map();
   let focused;
   let language = 'ru';
+  const urls = { created: [], revoked: [] };
+  function node() { return {
+    value: '', dataset: {}, events: {}, attributes: {}, children: [],
+    append(...items) { this.children.push(...items); }, replaceChildren() { this.children = []; },
+    addEventListener(key, callback) { this.events[key] = callback; },
+    setAttribute(key, value) { this.attributes[key] = value; }, focus() {},
+    set innerHTML(value) { throw new Error('Unsafe HTML'); },
+  }; }
   function get(selector) {
-    if (!elements.has(selector)) elements.set(selector, {
+    if (!elements.has(selector)) elements.set(selector, { ...node(),
       value: '', dataset: {}, events: {}, attributes: {},
       addEventListener(key, callback) { this.events[key] = callback; },
       setAttribute(key, value) { this.attributes[key] = value; },
@@ -21,12 +29,13 @@ function harness(createTicket = async () => ({ data: { id: 42 } })) {
     });
     return elements.get(selector);
   }
-  const context = vm.createContext({ document: { querySelector: get }, createTicket, TextEncoder, AbortController, uploadAttachment: async () => ({}), getTicket: async () => ({ data: { attachments: [] } }), t: key => `${language}:${key}` });
+  const context = vm.createContext({ document: { querySelector: get, createElement: node }, createTicket, URL: { createObjectURL(file) { const url = `blob:qa-${urls.created.length}`; urls.created.push({ file, url }); return url; }, revokeObjectURL(url) { urls.revoked.push(url); } }, TextEncoder, AbortController, uploadAttachment: async () => ({}), getTicket: async () => ({ data: { attachments: [] } }), t: key => `${language}:${key}` });
   vm.runInContext(source, context);
   function fill(values = {}) {
     for (const [key, value] of Object.entries({ type: 'problem', title: ' Test title ', description: ' A valid description ', ...values })) get(`#ticket-${key}`).value = value;
   }
-  return { context, get, fill, focused: () => focused, setLanguage: value => { language = value; }, submit: () => get('#new-ticket-form').events.submit({ preventDefault() {} }) };
+  context.openNewTicket();
+  return { context, get, fill, urls, focused: () => focused, setLanguage: value => { language = value; }, submit: () => get('#new-ticket-form').events.submit({ preventDefault() {} }) };
 }
 
 test('validation trims edges, checks all lengths, and counts Unicode characters like backend', () => {
@@ -109,9 +118,9 @@ test('logout reset discards late responses from a previous session', async () =>
 test('selected attachments validate before creation and upload sequentially after one create', async () => {
   let creates = 0; const calls = [];
   const h = harness(async () => { creates++; return { data: { id: 42 } }; });
-  h.fill(); h.get('#ticket-files').files = [{ name: 'bad.exe', size: 1 }];
+  h.fill(); h.get('#ticket-files').files = [{ name: 'bad.exe', size: 1 }]; h.get('#ticket-files').events.change();
   await h.submit(); assert.equal(creates, 0);
-  h.get('#ticket-files').files = [{ name: 'a.pdf', size: 10 }, { name: 'b.png', size: 10 }];
+  h.get('#ticket-files').files = [{ name: 'a.pdf', size: 10 }, { name: 'b.png', size: 10 }]; h.get('#ticket-files').events.change();
   h.context.uploadAttachment = async (id, file) => { calls.push(file.name); assert.equal(id, 42); };
   await h.submit();
   assert.equal(creates, 1); assert.deepEqual(calls, ['a.pdf', 'b.png']);
@@ -122,7 +131,7 @@ test('selected attachments validate before creation and upload sequentially afte
 test('partial file failure stops the batch, refreshes actual attachments, never recreates ticket', async () => {
   let creates = 0, uploads = 0, reads = 0;
   const h = harness(async () => { creates++; return { data: { id: 42 } }; });
-  h.fill(); h.get('#ticket-files').files = ['a.pdf','b.pdf','c.pdf'].map(name => ({ name, size: 10 }));
+  h.fill(); h.get('#ticket-files').files = ['a.pdf','b.pdf','c.pdf'].map(name => ({ name, size: 10 })); h.get('#ticket-files').events.change();
   h.context.uploadAttachment = async () => { if (++uploads === 2) throw new Error('NETWORK_ERROR'); };
   h.context.getTicket = async () => { reads++; return { data: { attachments: [{ id: 1 }] } }; };
   await h.submit();
@@ -134,7 +143,7 @@ test('partial file failure stops the batch, refreshes actual attachments, never 
 
 test('reset during upload aborts and stops subsequent files without restoring private results', async () => {
   const h = harness(); let calls = 0;
-  h.fill(); h.get('#ticket-files').files = ['a.pdf','b.pdf'].map(name => ({ name, size: 10 }));
+  h.fill(); h.get('#ticket-files').files = ['a.pdf','b.pdf'].map(name => ({ name, size: 10 })); h.get('#ticket-files').events.change();
   h.context.uploadAttachment = (id, file, signal) => { calls++; return new Promise((resolve, reject) => signal.addEventListener('abort', () => reject(new Error('UPLOAD_ABORTED')))); };
   const work = h.submit(); await new Promise(resolve => setImmediate(resolve));
   h.context.resetNewTicket(); await work;
@@ -145,11 +154,103 @@ test('reset during upload aborts and stops subsequent files without restoring pr
 
 test('rejected file shows the specific reason while preserving the created ticket', async () => {
   const h = harness(); h.fill();
-  h.get('#ticket-files').files = [{ name: 'photo.pdf', size: 20 }];
+  h.get('#ticket-files').files = [{ name: 'photo.pdf', size: 20 }]; h.get('#ticket-files').events.change();
   h.context.uploadAttachment = async () => { const error = new Error('UNSUPPORTED_FILE_TYPE'); error.status = 415; throw error; };
   await h.submit();
   assert.match(h.get('#create-ticket-status').textContent, /attachmentUnsupported/);
   assert.match(h.get('#create-ticket-status').textContent, /UNSUPPORTED_FILE_TYPE \(HTTP 415\)/);
   assert.match(h.get('#create-ticket-status').textContent, /0\/1/);
   assert.equal(h.get('#created-ticket-details').hidden, false);
+});
+
+
+test('counters use trimmed Unicode code points and preserve input through locale change', () => {
+  const h = harness();
+  const title = '  ' + '\u{1F600}'.repeat(120) + '  ';
+  const description = '  ' + '\u049B'.repeat(4000) + '  ';
+  h.fill({ title, description });
+  h.get('#ticket-title').events.input(); h.get('#ticket-description').events.input();
+  assert.equal(h.get('#ticket-title-counter').textContent, '120 / 120');
+  assert.equal(h.get('#ticket-description-counter').textContent, '4000 / 4000');
+  assert.equal(h.get('#ticket-title-counter').dataset.exceeded, 'false');
+  assert.equal(h.context.validateTicket({ type: 'problem', title, description }).title, undefined);
+  h.setLanguage('kk'); h.context.renderNewTicket();
+  assert.equal(h.get('#ticket-title').value, title);
+  assert.equal(h.get('#ticket-description').value, description);
+  assert.match(h.get('#ticket-title-counter').attributes['aria-label'], /^kk:characterCount/);
+  assert.equal(h.get('#ticket-description-counter').textContent, '4000 / 4000');
+});
+
+test('over-limit counter styling agrees with validation and resets on clearing and form reset', () => {
+  const h = harness();
+  h.fill({ title: '\u{1F600}'.repeat(121), description: 'x'.repeat(4001) });
+  h.context.renderNewTicket();
+  assert.equal(h.get('#ticket-title-counter').dataset.exceeded, 'true');
+  assert.equal(h.get('#ticket-description-counter').dataset.exceeded, 'true');
+  assert.equal(h.get('#ticket-title-counter').textContent, '121 / 120');
+  assert.ok(h.context.validateTicket({ type: 'problem', title: h.get('#ticket-title').value, description: h.get('#ticket-description').value }).title);
+  h.get('#ticket-title').value = '   '; h.get('#ticket-title').events.input();
+  assert.equal(h.get('#ticket-title-counter').textContent, '0 / 120');
+  assert.equal(h.get('#ticket-title-counter').dataset.exceeded, 'false');
+  h.context.resetNewTicket();
+  assert.equal(h.get('#ticket-description-counter').textContent, '0 / 4000');
+  assert.equal(h.get('#ticket-description-counter').dataset.exceeded, 'false');
+});
+
+
+function choose(h, files) { h.get('#ticket-files').files = files; h.get('#ticket-files').events.change(); }
+function previews(h) { return h.get('#ticket-previews').children; }
+function removePreview(h, index) { previews(h)[index].children.at(-1).events.click(); }
+
+test('preview reuses object URLs, appends selections, removes only one file and uploads remaining files', async () => {
+  let creates = 0; const sent = [];
+  const h = harness(async () => { creates++; return { data: { id: 42 } }; }); h.fill();
+  choose(h, [{ name: '<photo>.png', size: 100 }, { name: 'document.pdf', size: 200 }]);
+  assert.equal(creates, 0); assert.equal(previews(h).length, 2);
+  assert.equal(previews(h)[0].children[1].children[0].textContent, '<photo>.png');
+  assert.equal(h.urls.created.length, 1);
+  h.get('#ticket-title').events.input(); h.context.renderNewTicket();
+  assert.equal(h.urls.created.length, 1);
+  h.setLanguage('kk'); h.context.renderNewTicket();
+  assert.equal(previews(h)[0].children.at(-1).textContent, 'kk:removeSelectedFile');
+  assert.equal(h.urls.created.length, 1);
+  choose(h, [{ name: 'other.webp', size: 300 }]);
+  assert.equal(previews(h).length, 3); assert.equal(h.urls.created.length, 2);
+  removePreview(h, 0);
+  assert.equal(previews(h).length, 2); assert.equal(h.urls.revoked.length, 1);
+  h.context.uploadAttachment = async (id, file) => { sent.push(file.name); };
+  await h.submit();
+  assert.deepEqual(sent, ['document.pdf', 'other.webp']);
+  assert.equal(h.urls.revoked.length, 2); assert.equal(previews(h).length, 0);
+});
+
+test('preview rejects fourth, oversized or unsupported files without losing valid selection', async () => {
+  const h = harness(); h.fill();
+  choose(h, ['a.pdf', 'b.png', 'c.jpg'].map(name => ({ name, size: 100 })));
+  choose(h, [{ name: 'd.webp', size: 100 }]);
+  assert.equal(previews(h).length, 3);
+  assert.equal(h.get('#ticket-files-error').textContent, 'ru:newTicketFilesLimit');
+  h.get('#clear-ticket-files').events.click();
+  assert.equal(previews(h).length, 0); assert.equal(h.urls.revoked.length, 2);
+  choose(h, [{ name: 'good.pdf', size: 100 }]);
+  choose(h, [{ name: 'big.png', size: 5242881 }]);
+  assert.equal(previews(h).length, 1); assert.equal(h.get('#ticket-files-error').textContent, 'ru:attachmentTooLarge');
+  choose(h, [{ name: 'script.svg', size: 100 }]);
+  assert.equal(previews(h).length, 1); assert.equal(h.get('#ticket-files-error').textContent, 'ru:attachmentUnsupported');
+});
+
+test('leaving form releases URLs, reopening recreates them, reset drops files and stale image errors are ignored', () => {
+  const h = harness();
+  choose(h, [{ name: 'picture.jpeg', size: 100 }]);
+  const oldImage = previews(h)[0].children[0];
+  h.context.closeNewTicket();
+  assert.equal(previews(h).length, 0); assert.equal(h.urls.revoked.length, 1);
+  h.context.renderNewTicket(); assert.equal(h.urls.created.length, 1);
+  h.context.openNewTicket(); assert.equal(h.urls.created.length, 2);
+  oldImage.events.error(); assert.equal(h.urls.revoked.length, 1);
+  const image = previews(h)[0].children[0]; image.events.error();
+  assert.equal(h.urls.revoked.length, 2);
+  assert.equal(previews(h)[0].children[0].textContent, 'ru:attachmentPreviewUnavailable');
+  h.context.resetNewTicket(); assert.equal(previews(h).length, 0);
+  assert.equal(h.get('#ticket-files').value, '');
 });
