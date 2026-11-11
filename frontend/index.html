@@ -6,7 +6,7 @@
   <title>Голос команды</title>
   <link rel="icon" href="data:,">
   <link rel="stylesheet" href="css/styles.css">
-  <script type="module" src="js/app.js?v=attachments-20261111-3"></script>
+  <script type="module" src="js/app.js?v=password-reset-20261111-1"></script>
 </head>
 <body>
   <header class="site-header">
@@ -263,6 +263,24 @@
         </nav>
       </section>
     </section>
+    <dialog id="reset-password-dialog" aria-labelledby="reset-password-title" aria-describedby="reset-password-warning">
+      <h2 id="reset-password-title" data-i18n="resetPassword"></h2>
+      <p id="reset-password-person" class="employee-name"></p>
+      <p id="reset-password-warning" class="hint" data-i18n="resetPasswordWarning"></p>
+      <p id="reset-password-blocked" class="hint" data-i18n="resetBlockedNote" hidden></p>
+      <div id="reset-password-result" hidden>
+        <p data-i18n="temporaryPassword"></p>
+        <p id="reset-temporary-password" class="temporary-password" tabindex="0"></p>
+        <p class="hint" data-i18n="resetPasswordOnce"></p>
+        <button id="copy-reset-password" class="secondary-button" type="button" data-i18n="copyPassword"></button>
+        <p id="reset-copy-status" class="status" role="status"></p>
+      </div>
+      <p id="reset-password-progress" class="status" role="status"></p>
+      <div class="reset-dialog-actions">
+        <button id="confirm-reset-password" class="primary-button" type="button" data-i18n="confirmResetPassword"></button>
+        <button id="close-reset-password" class="secondary-button" type="button" data-i18n="closeResult"></button>
+      </div>
+    </dialog>
     <p id="session-status" class="session-status status" role="status"></p>
   </main>
 </body>

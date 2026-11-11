@@ -186,3 +186,17 @@ test('upload sends one multipart file without forcing JSON or boundary', async (
   try { assert.equal((await api.uploadAttachment(124, new File(['%PDF-1.4'], 'a.pdf'))).data.id, 7); }
   finally { globalThis.fetch = previous; }
 });
+
+
+test('reset sends empty JSON and conflict does not end administrator session', async () => {
+  const previous = globalThis.fetch, previousWindow = globalThis.window; let events = 0;
+  globalThis.window = { dispatchEvent() { events++; } };
+  globalThis.fetch = async (url, options) => {
+    assert.equal(url, '/api/v1/admin/users/4/reset-password');
+    assert.equal(options.method, 'POST'); assert.equal(options.credentials, 'same-origin');
+    assert.equal(options.headers['Content-Type'], 'application/json'); assert.equal(options.body, '{}');
+    return Response.json({ error: { code: 'PASSWORD_CHANGED' } }, { status: 409 });
+  };
+  try { await assert.rejects(api.resetUserPassword(4), /PASSWORD_CHANGED/); assert.equal(events, 0); }
+  finally { globalThis.fetch = previous; globalThis.window = previousWindow; }
+});
