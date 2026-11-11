@@ -1,5 +1,9 @@
 // All requests share the backend origin and HttpOnly cookie session.
+let sessionEpoch = 0;
+export function invalidateSessionRequests() { sessionEpoch++; }
+
 export async function request(path, options = {}) {
+  const epoch = sessionEpoch;
   let response;
   try {
     response = await fetch(`/api/v1${path}`, {
@@ -9,7 +13,7 @@ export async function request(path, options = {}) {
       cache: 'no-store',
     });
   } catch (error) {
-    if (error.name === 'AbortError') throw new Error('UPLOAD_ABORTED');
+    if (error.name === 'AbortError') throw new Error(options.body instanceof FormData ? 'UPLOAD_ABORTED' : 'REQUEST_ABORTED');
     throw new Error('NETWORK_ERROR');
   }
   if (response.status === 204) return null;
@@ -17,13 +21,13 @@ export async function request(path, options = {}) {
   try { result = await response.json(); } catch { throw new Error('API_UNAVAILABLE'); }
   if (!response.ok) {
     const code = result.error?.code ?? 'API_UNAVAILABLE';
-    if (['UNAUTHORIZED', 'ACCOUNT_DISABLED', 'PASSWORD_CHANGED'].includes(code)
+    if (epoch === sessionEpoch && ['UNAUTHORIZED', 'ACCOUNT_DISABLED', 'PASSWORD_CHANGED'].includes(code)
       && !(code === 'PASSWORD_CHANGED' && path.endsWith('/reset-password'))) {
       const event = new Event('session-ended');
       event.code = code;
       globalThis.window?.dispatchEvent(event);
     }
-    if (code === 'PASSWORD_CHANGE_REQUIRED') globalThis.window?.dispatchEvent(new Event('password-change-required'));
+    if (epoch === sessionEpoch && code === 'PASSWORD_CHANGE_REQUIRED') globalThis.window?.dispatchEvent(new Event('password-change-required'));
     const error = new Error(code);
     error.status = response.status;
     error.details = result.error?.details;
@@ -48,8 +52,8 @@ export const updateUser = (id, is_active) => request(`/admin/users/${id}`, {
   method: 'PATCH', body: JSON.stringify({ is_active }),
 });
 
-export const resetUserPassword = id => request(`/admin/users/${id}/reset-password`, {
-  method: 'POST', body: JSON.stringify({}),
+export const resetUserPassword = (id, signal) => request(`/admin/users/${id}/reset-password`, {
+  method: 'POST', body: JSON.stringify({}), signal,
 });
 
 export function normalizePhone(value) {

@@ -200,3 +200,20 @@ test('reset sends empty JSON and conflict does not end administrator session', a
   try { await assert.rejects(api.resetUserPassword(4), /PASSWORD_CHANGED/); assert.equal(events, 0); }
   finally { globalThis.fetch = previous; globalThis.window = previousWindow; }
 });
+
+
+test('old authorization errors cannot invalidate a newer session epoch', async () => {
+  const previous = globalThis.fetch, previousWindow = globalThis.window;
+  let finish, events = 0;
+  globalThis.window = { dispatchEvent() { events++; } };
+  globalThis.fetch = () => new Promise(resolve => { finish = resolve; });
+  try {
+    const pending = api.getMyTickets();
+    api.invalidateSessionRequests();
+    finish(Response.json({ error: { code: 'UNAUTHORIZED' } }, { status: 401 }));
+    await assert.rejects(pending, /UNAUTHORIZED/);
+    assert.equal(events, 0);
+    globalThis.fetch = async () => Response.json({ error: { code: 'UNAUTHORIZED' } }, { status: 401 });
+    await assert.rejects(api.getMe(), /UNAUTHORIZED/); assert.equal(events, 1);
+  } finally { globalThis.fetch = previous; globalThis.window = previousWindow; }
+});

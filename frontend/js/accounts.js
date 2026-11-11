@@ -1,5 +1,5 @@
-import { changePassword, getUsers, createUser, updateUser, resetUserPassword, normalizePhone } from './api.js?v=password-reset-20261111-1';
-import { t } from './i18n.js?v=password-reset-20261111-1';
+import { changePassword, getUsers, createUser, updateUser, resetUserPassword, normalizePhone } from './api.js?v=audit-fixes-20261111-1';
+import { t } from './i18n.js?v=audit-fixes-20261111-1';
 
 const $ = id => document.querySelector(`#${id}`);
 let version = 0;
@@ -16,9 +16,15 @@ let notices = {};
 let resetTarget = null;
 let resetting = false;
 let resetVersion = 0;
+let resetController = null;
+let resetTimer = null;
 const resetDialog = $('reset-password-dialog');
 
 function clearReset() {
+  resetController?.abort();
+  resetController = null;
+  clearTimeout(resetTimer); resetTimer = null;
+  resetting = false;
   resetVersion++;
   resetTarget = null;
   $('reset-temporary-password').textContent = '';
@@ -72,7 +78,7 @@ function errorNotice(error) {
 }
 
 function notice(id, value = '') { notices[id] = typeof value === 'string' ? { key: value } : value; }
-const uncertain = error => ['NETWORK_ERROR', 'API_UNAVAILABLE', 'INTERNAL_ERROR'].includes(error.message);
+const uncertain = error => ['NETWORK_ERROR', 'API_UNAVAILABLE', 'INTERNAL_ERROR', 'REQUEST_ABORTED'].includes(error.message);
 function clearSecret() {
   $('temporary-password').textContent = '';
   $('created-user-phone').textContent = '';
@@ -92,10 +98,10 @@ export function renderAccounts() {
   $('change-password-fields').disabled = pending;
   $('create-user-fields').disabled = pending || resetting || !$('user-created').hidden;
   $('confirm-reset-password').disabled = resetting;
-  $('close-reset-password').disabled = resetting;
+  $('close-reset-password').disabled = false;
   $('close-reset-password').dataset.i18n = $('reset-password-result').hidden ? 'cancelReset' : 'closeResult';
   $('close-reset-password').textContent = t($('close-reset-password').dataset.i18n);
-  $('reset-password-progress').textContent = resetting ? t('savingAccount') : '';
+  $('reset-password-progress').textContent = resetting ? t('resetWaiting') : '';
   $('users-list').replaceChildren();
   for (const user of result?.data ?? []) {
     const row = document.createElement('li');
@@ -237,8 +243,12 @@ $('retry-users').addEventListener('click', () => { if (!loading && active === 'u
 $('users-previous').addEventListener('click', () => { if (!loading && changingUser === null && page > 1) { page--; loadUsers(); } });
 $('users-next').addEventListener('click', () => { if (!loading && changingUser === null && result && page * result.pagination.limit < result.pagination.total) { page++; loadUsers(); } });
 
-$('close-reset-password').addEventListener('click', () => { if (!resetting) { clearReset(); renderAccounts(); } });
-resetDialog.addEventListener('cancel', event => { if (resetting) event.preventDefault(); });
+function cancelReset() {
+  if (resetting) notice('users-action-status', 'resetPasswordUncertain');
+  clearReset(); renderAccounts();
+}
+$('close-reset-password').addEventListener('click', cancelReset);
+resetDialog.addEventListener('cancel', event => { event.preventDefault(); cancelReset(); });
 resetDialog.addEventListener('close', () => {
   // Native Escape and route changes must erase the secret, including hidden DOM.
   if (resetDialog.open) return;
@@ -255,9 +265,12 @@ $('confirm-reset-password').addEventListener('click', async () => {
   const generation = version;
   const operation = resetVersion;
   const id = resetTarget.id;
+  resetController = new AbortController();
+  const controller = resetController;
+  const timer = resetTimer = setTimeout(() => controller.abort(), 30000);
   resetting = true; notice('users-action-status'); renderAccounts();
   try {
-    const response = await resetUserPassword(id);
+    const response = await resetUserPassword(id, controller.signal);
     if (generation !== version || operation !== resetVersion) return;
     if (result) result.data = result.data.map(user => user.id === id ? response.data.user : user);
     resetTarget = response.data.user;
@@ -278,7 +291,10 @@ $('confirm-reset-password').addEventListener('click', async () => {
     if (['NOT_FOUND', 'PASSWORD_CHANGED'].includes(error.message) || uncertain(error)) await loadUsers();
     if (error.message === 'FORBIDDEN') globalThis.window?.dispatchEvent(new Event('session-refresh-requested'));
   } finally {
-    if (generation === version) { resetting = false; renderAccounts(); }
+    clearTimeout(timer);
+    if (generation === version && operation === resetVersion) {
+      resetController = null; resetTimer = null; resetting = false; renderAccounts();
+    } else if (generation === version && !resetting) renderAccounts();
   }
 });
 

@@ -15,7 +15,7 @@ function harness(api = {}) {
     reset() { for (const element of elements.values()) element.value = ''; },
   });
   const document = { createElement: node, querySelector(id) { if (!elements.has(id)) elements.set(id, node()); return elements.get(id); } };
-  const context = vm.createContext({ document, TextEncoder, navigator: { clipboard: { writeText: async () => {} } }, t: key => key,
+  const context = vm.createContext({ document, TextEncoder, AbortController, setTimeout, clearTimeout, navigator: { clipboard: { writeText: async () => {} } }, t: key => key,
     normalizePhone: phone => /^\+77\d{9}$/.test(phone) ? phone : null,
     getUsers: async () => ({ data: [employee], pagination: { page: 1, limit: 20, total: 1 } }),
     changePassword: async () => ({ data: { user: employee }, meta: { passwordChangeRequired: false } }),
@@ -201,7 +201,7 @@ test('reset conflict refreshes list; late successful response cannot restore sec
   assert.equal(h.get('users-list').children.length, 0);
 });
 
-test('Escape erases reset secret and pending reset cannot be cancelled or resubmitted', async () => {
+test('Escape erases secret and cancels pending waiting without restoring a late secret', async () => {
   const h = harness(); h.context.openAccounts('users'); await flush(); resetButton(h).events.click();
   await h.get('confirm-reset-password').events.click();
   h.get('reset-password-dialog').open = false; h.get('reset-password-dialog').events.close();
@@ -210,5 +210,22 @@ test('Escape erases reset secret and pending reset cannot be cancelled or resubm
   resetButton(h).events.click(); const work = h.get('confirm-reset-password').events.click();
   let prevented = false;
   h.get('reset-password-dialog').events.cancel({ preventDefault() { prevented = true; } }); assert.equal(prevented, true);
+  assert.equal(h.get('reset-password-dialog').open, false);
+  assert.equal(h.get('users-action-status').textContent, 'resetPasswordUncertain');
   h.context.closeAccounts(); d.resolve({ data: { user: employee, temporary_password: 'discard' } }); await work;
+});
+
+
+test('reset timeout unlocks modal and never retries the mutation', async () => {
+  let expire, calls = 0;
+  const h = harness({ setTimeout(callback, ms) { assert.equal(ms, 30000); expire = callback; return 1; }, clearTimeout() {},
+    resetUserPassword(id, signal) { calls++; return new Promise((resolve, reject) => signal.addEventListener('abort', () => reject(new Error('REQUEST_ABORTED')))); } });
+  h.context.openAccounts('users'); await flush(); resetButton(h).events.click();
+  const work = h.get('confirm-reset-password').events.click();
+  assert.equal(h.get('close-reset-password').disabled, false);
+  expire(); await work;
+  assert.equal(h.get('reset-password-dialog').open, false);
+  assert.equal(h.get('users-action-status').textContent, 'resetPasswordUncertain');
+  assert.equal(calls, 1);
+  await h.get('confirm-reset-password').events.click(); assert.equal(calls, 1);
 });

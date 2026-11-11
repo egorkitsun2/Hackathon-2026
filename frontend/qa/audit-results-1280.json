@@ -1,0 +1,169 @@
+{
+  "results": [
+    {
+      "step": "admin-decision",
+      "result": "UI new -> in_review -> resolved, comment, stats refresh and filter: PASS"
+    },
+    {
+      "step": "targeted-audit",
+      "findings": [
+        {
+          "id": "F3",
+          "area": "frontend",
+          "issue": "Employee returns to page 1 after opening a ticket from page 2."
+        },
+        {
+          "id": "F1",
+          "area": "frontend",
+          "issue": "Delayed 401 from previous employee request logs out freshly logged-in administrator in UI."
+        },
+        {
+          "id": "F2",
+          "area": "frontend",
+          "issue": "Pending reset has no client timeout; modal cannot be closed via button/Escape and blocks logout/navigation while connection hangs."
+        }
+      ],
+      "errors": [],
+      "checks": [
+        "pagination return",
+        "RU/KK",
+        "320/390/768/1280 overflow",
+        "late 401 session race",
+        "pending reset modal"
+      ]
+    }
+  ],
+  "traffic": [
+    {
+      "method": "GET",
+      "path": "/api/v1/auth/me",
+      "status": 401
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/auth/login",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/tickets",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/tickets",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/tickets/1",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/tickets",
+      "status": 200
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/auth/logout",
+      "status": 204
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/auth/login",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/tickets",
+      "status": 401
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/stats",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/tickets",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/auth/me",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/stats",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/tickets",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/users",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/users",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/stats",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/tickets",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/tickets/21",
+      "status": 200
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/admin/tickets/21",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/tickets/21",
+      "status": 200
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/admin/tickets/21",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/tickets/21",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/stats",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/tickets",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/tickets",
+      "status": 200
+    }
+  ],
+  "errors": []
+}

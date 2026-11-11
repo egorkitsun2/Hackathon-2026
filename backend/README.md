@@ -125,8 +125,10 @@ No frontend files were changed by this backend implementation.
 - Argon2id: 64 MiB memory, time cost 3, parallelism 1, per-password random salt.
   Unknown accounts verify against a randomly generated dummy hash. Two costly
   verifications may run concurrently per app process; excess requests get 503.
-- Login permits 5 attempts per phone and 60 per socket IP per 15-minute window,
-  counting successes too. Counters persist in SQLite. 429 includes Retry-After.
+- Login permits 5 incorrect-password attempts per phone per 15-minute window;
+  successful logins do not consume that phone limit. The separate 60-attempt
+  socket-IP capacity bucket still counts every attempt before hashing.
+  Counters persist in SQLite. 429 includes the actual remaining Retry-After seconds.
   Forwarded IP headers are ignored. Behind a reverse proxy, the IP bucket is
   shared by users of that proxy; this is deliberately conservative for the MVP.
 - Sessions use 32 random bytes. Only the SHA-256 token digest is stored in

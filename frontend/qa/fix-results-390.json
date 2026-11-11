@@ -1,0 +1,161 @@
+{
+  "results": [
+    {
+      "step": "admin-decision",
+      "result": "UI new -> in_review -> resolved, comment, stats refresh and filter: PASS"
+    },
+    {
+      "step": "regressions",
+      "result": "PASS",
+      "checks": [
+        "F3: page 2 preserved after ticket details",
+        "F1: delayed 401 cannot end new admin session",
+        "F2: Escape cancels waiting, 30-second timeout unlocks modal, no automatic retry or retained secret",
+        "F4: Retry-After 3 seconds displays 00:03 -> 00:01 and unlocks at zero"
+      ]
+    }
+  ],
+  "traffic": [
+    {
+      "method": "GET",
+      "path": "/api/v1/auth/me",
+      "status": 401
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/auth/login",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/tickets",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/tickets",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/tickets/1",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/tickets",
+      "status": 200
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/auth/logout",
+      "status": 204
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/auth/login",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/tickets",
+      "status": 401
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/stats",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/tickets",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/auth/me",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/stats",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/tickets",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/users",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/users",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/stats",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/tickets",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/tickets/21",
+      "status": 200
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/admin/tickets/21",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/tickets/21",
+      "status": 200
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/admin/tickets/21",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/tickets/21",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/stats",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/tickets",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/tickets",
+      "status": 200
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/auth/logout",
+      "status": 204
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/auth/login",
+      "status": 429
+    }
+  ],
+  "errors": []
+}

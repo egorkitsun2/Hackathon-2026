@@ -1,5 +1,5 @@
-import { getAdminTickets, getAdminStats } from './api.js?v=password-reset-20261111-1';
-import { t } from './i18n.js?v=password-reset-20261111-1';
+import { getAdminTickets, getAdminStats } from './api.js?v=audit-fixes-20261111-1';
+import { t } from './i18n.js?v=audit-fixes-20261111-1';
 
 const screen = document.querySelector('#admin-screen');
 const filter = document.querySelector('#admin-status-filter');

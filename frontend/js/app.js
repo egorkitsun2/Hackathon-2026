@@ -1,10 +1,10 @@
-import { openAccounts, closeAccounts, renderAccounts } from './accounts.js?v=password-reset-20261111-1';
-import { login, logout, getMe, normalizePhone } from './api.js?v=password-reset-20261111-1';
-import { setLanguage, t } from './i18n.js?v=password-reset-20261111-1';
-import { openEmployee, closeEmployee, renderEmployee } from './employee.js?v=password-reset-20261111-1';
-import { openNewTicket, resetNewTicket, renderNewTicket } from './new-ticket.js?v=password-reset-20261111-1';
-import { openTicketDetails, closeTicketDetails, renderTicketDetails } from './ticket.js?v=password-reset-20261111-1';
-import { openAdminQueue, closeAdminQueue, renderAdminQueue } from './admin.js?v=password-reset-20261111-1';
+import { openAccounts, closeAccounts, renderAccounts } from './accounts.js?v=audit-fixes-20261111-1';
+import { login, logout, getMe, normalizePhone, invalidateSessionRequests } from './api.js?v=audit-fixes-20261111-1';
+import { setLanguage, t } from './i18n.js?v=audit-fixes-20261111-1';
+import { openEmployee, closeEmployee, renderEmployee } from './employee.js?v=audit-fixes-20261111-1';
+import { openNewTicket, resetNewTicket, renderNewTicket } from './new-ticket.js?v=audit-fixes-20261111-1';
+import { openTicketDetails, closeTicketDetails, renderTicketDetails } from './ticket.js?v=audit-fixes-20261111-1';
+import { openAdminQueue, closeAdminQueue, renderAdminQueue } from './admin.js?v=audit-fixes-20261111-1';
 
 const form = document.querySelector('#login-form');
 const phone = document.querySelector('#phone');
@@ -18,8 +18,25 @@ let user = null;
 let passwordChangeRequired = false;
 let restoringSession = true;
 let sessionVersion = 0;
+let loginBlockedUntil = 0;
+let loginBlockedPhone = null;
+let cooldownTimer = null;
 const logoutButton = document.querySelector('#logout');
 const sessionStatus = document.querySelector('#session-status');
+
+function renderLoginCooldown() {
+  const remaining = Math.max(0, Math.ceil((loginBlockedUntil - Date.now()) / 1000));
+  submit.disabled = submitting || restoringSession || remaining > 0;
+  if (remaining > 0) {
+    delete status.dataset.i18n;
+    status.textContent = `${t('loginRetryCountdown')} ${String(Math.floor(remaining / 60)).padStart(2, '0')}:${String(remaining % 60).padStart(2, '0')}`;
+  } else if (loginBlockedUntil) {
+    loginBlockedUntil = 0;
+    loginBlockedPhone = null;
+    clearInterval(cooldownTimer); cooldownTimer = null;
+    showStatus(status, 'loginRetryReady');
+  }
+}
 
 function showStatus(element, key = '') {
   if (key) element.dataset.i18n = key;
@@ -61,6 +78,7 @@ document.querySelectorAll('[data-language]').forEach((button) => {
     renderTicketDetails();
     renderAdminQueue();
     renderAccounts();
+    renderLoginCooldown();
   });
 });
 
@@ -71,9 +89,15 @@ toggle.addEventListener('click', () => {
 
 for (const input of [phone, password]) {
   input.addEventListener('input', () => {
+    const normalized = input === phone ? normalizePhone(phone.value) : null;
+    if (normalized && normalized !== loginBlockedPhone) {
+      loginBlockedUntil = 0; loginBlockedPhone = null;
+      clearInterval(cooldownTimer); cooldownTimer = null;
+    }
     errors[input.name] = '';
     renderErrors();
     showStatus(status);
+    renderLoginCooldown();
   });
 }
 
@@ -87,7 +111,7 @@ phone.addEventListener('blur', () => {
 
 form.addEventListener('submit', async (event) => {
   event.preventDefault();
-  if (submitting) return;
+  if (submitting || Date.now() < loginBlockedUntil) return;
   errors.phone = !phone.value.trim() ? 'phoneRequired' : normalizePhone(phone.value) ? '' : 'phoneInvalid';
   errors.password = password.value.length ? '' : 'passwordRequired';
   renderErrors();
@@ -98,6 +122,7 @@ form.addEventListener('submit', async (event) => {
     return;
   }
   submitting = true;
+  const submittedPhone = normalizePhone(phone.value);
   submit.disabled = true;
   submit.dataset.i18n = 'signingIn';
   submit.textContent = t('signingIn');
@@ -105,8 +130,9 @@ form.addEventListener('submit', async (event) => {
   showStatus(status);
   showStatus(sessionStatus);
   const version = ++sessionVersion;
+  invalidateSessionRequests();
   try {
-    const response = await login({ phone: normalizePhone(phone.value), password: password.value });
+    const response = await login({ phone: submittedPhone, password: password.value });
     if (version !== sessionVersion) return;
     user = response.data.user;
     passwordChangeRequired = response.meta?.passwordChangeRequired === true;
@@ -116,13 +142,20 @@ form.addEventListener('submit', async (event) => {
     history.replaceState(null, '', user.role === 'admin' ? '#/admin' : '#/employee');
     route();
   } catch (error) {
-    showStatus(status, errorKey(error));
+    if (error.message === 'RATE_LIMITED') {
+      loginBlockedUntil = Date.now() + (error.retryAfter ?? 900) * 1000;
+      loginBlockedPhone = submittedPhone;
+      clearInterval(cooldownTimer);
+      cooldownTimer = setInterval(renderLoginCooldown, 1000);
+      renderLoginCooldown();
+    } else showStatus(status, errorKey(error));
   } finally {
     submitting = false;
     submit.disabled = false;
     submit.dataset.i18n = 'signIn';
     submit.textContent = t('signIn');
     form.removeAttribute('aria-busy');
+    renderLoginCooldown();
   }
 });
 
@@ -146,12 +179,13 @@ function route() {
   document.body.classList.toggle('employee-screen', employee || viewing);
   document.body.classList.toggle('admin-screen', admin && !viewing);
   logoutButton.hidden = !user;
-  closeEmployee();
+  closeEmployee(!employee);
   closeTicketDetails();
   closeAdminQueue(!admin);
   if (changing || managing) {
     resetNewTicket();
     openAccounts(changing ? 'password' : 'users', response => {
+      invalidateSessionRequests();
       user = response.data.user;
       passwordChangeRequired = response.meta?.passwordChangeRequired === true;
       route();
@@ -173,6 +207,7 @@ window.addEventListener('password-change-required', () => {
 
 window.addEventListener('session-ended', (event) => {
   sessionVersion++;
+  invalidateSessionRequests();
   user = null;
   resetNewTicket();
   route();
@@ -180,6 +215,8 @@ window.addEventListener('session-ended', (event) => {
 });
 
 logoutButton.addEventListener('click', async () => {
+  sessionVersion++;
+  invalidateSessionRequests();
   closeAccounts();
   logoutButton.disabled = true;
   showStatus(sessionStatus);
@@ -212,6 +249,7 @@ async function restoreSession() {
   } finally {
     restoringSession = false;
     submit.disabled = false;
+    renderLoginCooldown();
     route();
   }
 }

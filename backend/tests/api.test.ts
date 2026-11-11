@@ -183,13 +183,34 @@ test('atomic create and status updates, concurrent transitions and history', asy
   } finally { f.db.close(); }
 });
 
-test('login rate limiting includes successful attempts', async () => {
+test('successful logins do not consume the phone failure limit; failures block with exact remaining time', async () => {
   const f = await fixture();
   try {
-    for (let i = 0; i < 5; i++) {
+    for (let i = 0; i < 6; i++) {
       const res = await request(f, '/auth/login', { method: 'POST', origin, body: { phone: phones[0], password } });
       assert.equal(res.status, 200);
     }
-    await errorCode(await request(f, '/auth/login', { method: 'POST', origin, body: { phone: phones[0], password } }), 429, 'RATE_LIMITED');
+    for (let i = 0; i < 5; i++) {
+      await errorCode(await request(f, '/auth/login', { method: 'POST', origin, body: { phone: phones[0], password: 'not-the-test-password' } }), 401, 'INVALID_CREDENTIALS');
+    }
+    const bucket = createHash('sha256').update(`phone:${phones[0]}`).digest('hex');
+    f.db.prepare('UPDATE login_attempts SET window_start = ? WHERE bucket = ?').run(Date.now() - 870000, bucket);
+    const blocked = await request(f, '/auth/login', { method: 'POST', origin, body: { phone: phones[0], password } });
+    assert.ok(Number(blocked.headers.get('Retry-After')) > 25 && Number(blocked.headers.get('Retry-After')) <= 30);
+    await errorCode(blocked, 429, 'RATE_LIMITED');
+    f.db.prepare('UPDATE login_attempts SET window_start = ? WHERE bucket = ?').run(Date.now() - 900001, bucket);
+    assert.equal((await request(f, '/auth/login', { method: 'POST', origin, body: { phone: phones[0], password } })).status, 200);
+  } finally { f.db.close(); }
+});
+
+test('global IP capacity limit remains enforced for successful logins', async () => {
+  const f = await fixture();
+  try {
+    // In-process requests use the documented local peer fallback.
+    const bucket = createHash('sha256').update('ip:local').digest('hex');
+    f.db.prepare('INSERT INTO login_attempts(bucket,window_start,attempts) VALUES (?,?,60)').run(bucket, Date.now() - 880000);
+    const blocked = await request(f, '/auth/login', { method: 'POST', origin, body: { phone: phones[0], password } });
+    assert.ok(Number(blocked.headers.get('Retry-After')) > 15 && Number(blocked.headers.get('Retry-After')) <= 20);
+    await errorCode(blocked, 429, 'RATE_LIMITED');
   } finally { f.db.close(); }
 });
