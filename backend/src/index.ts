@@ -6,6 +6,8 @@ import { getConnInfo } from '@hono/node-server/conninfo'
 import type { DatabaseSync } from 'node:sqlite'
 import { randomBytes } from 'node:crypto'
 import { transaction } from './db.js'
+import { AttachmentStorage, attachmentView, defaultAttachmentsDir, MAX_ATTACHMENTS } from './attachments.js'
+import type { AttachmentRow } from './attachments.js'
 import { accountProfile, employeeView, newPassword, temporaryPassword, userId } from './accounts.js'
 import { allowLogin, digest, hashPassword, newSessionToken, normalizePhone, SESSION_SECONDS, verifyPassword } from './security.js'
 import { ApiError, invalid, jsonBody, pagination, text, ticketId } from './validation.js'
@@ -18,14 +20,16 @@ const publicUser = (user: User) => ({ id: user.id, full_name: user.full_name, ph
 const publicTicket = (ticket: Ticket) => ({ id: ticket.id, type: ticket.type, title: ticket.title,
   description: ticket.description, status: ticket.status, created_at: ticket.created_at, updated_at: ticket.updated_at })
 
-export interface AppOptions { db: DatabaseSync; origin: string; production?: boolean }
+export interface AppOptions { db: DatabaseSync; origin: string; production?: boolean; attachmentsDir?: string; frontendDir?: string }
 
-export async function createApp({ db, origin, production = false }: AppOptions) {
+export async function createApp({ db, origin, production = false, attachmentsDir, frontendDir }: AppOptions) {
   const url = new URL(origin)
   if (url.origin !== origin || !['http:', 'https:'].includes(url.protocol) || (production && url.protocol !== 'https:')) {
     throw new Error('APP_ORIGIN must be an exact origin; production requires HTTPS')
   }
   const app = new Hono<AppEnv>()
+  const attachmentStorage = new AttachmentStorage(attachmentsDir ?? defaultAttachmentsDir, db, frontendDir)
+  if (attachmentsDir !== undefined) await attachmentStorage.initialize()
   const cookieName = production ? '__Host-team_voice_session' : 'team_voice_session'
   const cookieOptions = { httpOnly: true, secure: production, sameSite: 'Lax' as const, path: '/' }
   // Unknown users pay the same Argon2 cost as known users. Never store a dummy password in Git.
@@ -44,7 +48,10 @@ export async function createApp({ db, origin, production = false }: AppOptions) 
     c.header('X-Password-Change-Required', user.must_change_password ? 'true' : 'false')
   }
 
+  const isAttachmentUpload = (c: Context) => c.req.method === 'POST' && /^\/api\/v1\/tickets\/[^/]+\/attachments$/.test(c.req.path)
   app.use('/api/*', async (c, next) => {
+    // Also close uploads rejected by Origin/session checks before their body is consumed.
+    if (isAttachmentUpload(c)) c.header('Connection', 'close')
     c.header('Cache-Control', 'no-store')
     c.header('X-Content-Type-Options', 'nosniff')
     c.header('Cross-Origin-Resource-Policy', 'same-origin')
@@ -53,8 +60,13 @@ export async function createApp({ db, origin, production = false }: AppOptions) 
     }
     await next()
   })
-  app.use('/api/*', bodyLimit({ maxSize: 32768,
-    onError: (c) => c.json({ error: { code: 'VALIDATION_ERROR', message: 'Request body too large' } }, 400) }))
+  const jsonLimit = bodyLimit({ maxSize: 32768,
+    onError: (c) => c.json({ error: { code: 'VALIDATION_ERROR', message: 'Request body too large' } }, 400) })
+  app.use('/api/*', (c, next) => {
+    // Only the specific upload route bypasses the JSON buffer; its receiver enforces streaming limits.
+    if (isAttachmentUpload(c)) return next()
+    return jsonLimit(c, next)
+  })
 
   function sessionUser(tokenHash: string, role?: Role, allowPasswordChange = false): User {
     const user = db.prepare(`SELECT u.* FROM sessions s JOIN users u ON u.id = s.user_id
@@ -269,6 +281,47 @@ export async function createApp({ db, origin, production = false }: AppOptions) 
     return c.json({ data: publicTicket(ticket) }, 201)
   })
 
+  function attachmentTicket(id: number, user: User, upload = false): Ticket {
+    const ticket = db.prepare('SELECT * FROM tickets WHERE id = ?').get(id) as unknown as Ticket | undefined
+    if (!ticket || (user.role !== 'admin' && ticket.author_id !== user.id)) throw new ApiError(404, 'NOT_FOUND', 'Ticket not found')
+    if (upload && ticket.author_id !== user.id) throw new ApiError(403, 'FORBIDDEN', 'Only the ticket author can upload attachments')
+    if (upload && ticket.status !== 'new') throw new ApiError(409, 'ATTACHMENTS_LOCKED', 'Attachments are allowed only for new tickets')
+    return ticket
+  }
+  function attachmentQuota(id: number) {
+    const count = Number(db.prepare('SELECT count(*) AS total FROM ticket_attachments WHERE ticket_id = ?').get(id)!.total)
+    if (count >= MAX_ATTACHMENTS) throw new ApiError(409, 'ATTACHMENT_LIMIT_REACHED', 'At most three attachments per ticket')
+  }
+  app.post('/api/v1/tickets/:id/attachments', authenticated(), async (c) => {
+    const id = ticketId(c.req.param('id'))
+    attachmentTicket(id, c.get('user'), true)
+    attachmentQuota(id)
+    const file = await attachmentStorage.receive(c.req.raw)
+    let committed = false
+    try {
+      if (c.req.raw.signal.aborted) throw new ApiError(400, 'UPLOAD_ABORTED', 'Upload interrupted')
+      const row = transaction(db, () => {
+        attachmentTicket(id, sessionUser(c.get('tokenHash')), true)
+        attachmentQuota(id)
+        attachmentStorage.publish(file)
+        const created = db.prepare(`INSERT INTO ticket_attachments
+          (ticket_id, storage_key, original_name, mime_type, size_bytes, created_at) VALUES (?, ?, ?, ?, ?, ?)`)
+          .run(id, file.key, file.originalName, file.mime, file.size, new Date().toISOString())
+        return db.prepare('SELECT * FROM ticket_attachments WHERE id = ?').get(Number(created.lastInsertRowid)) as unknown as AttachmentRow
+      })
+      committed = true
+      return c.json({ data: attachmentView(row) }, 201)
+    } finally { if (!committed) await attachmentStorage.discard(file) }
+  })
+  app.get('/api/v1/tickets/:id/attachments/:attachmentId', authenticated(), async (c) => {
+    const id = ticketId(c.req.param('id'))
+    const attachmentId = ticketId(c.req.param('attachmentId'))
+    attachmentTicket(id, c.get('user'))
+    const row = db.prepare('SELECT * FROM ticket_attachments WHERE id = ? AND ticket_id = ?').get(attachmentId, id) as unknown as AttachmentRow | undefined
+    if (!row) throw new ApiError(404, 'NOT_FOUND', 'Attachment not found')
+    return attachmentStorage.download(row, () => { attachmentTicket(id, sessionUser(c.get('tokenHash'))) })
+  })
+
   app.get('/api/v1/tickets/:id', authenticated(), (c) => {
     const id = ticketId(c.req.param('id'))
     const user = c.get('user')
@@ -281,7 +334,8 @@ export async function createApp({ db, origin, production = false }: AppOptions) 
         JOIN users u ON u.id = e.actor_id WHERE e.ticket_id = ? ORDER BY e.id ASC`).all(id).map((row) => ({
           id: row.id, actor: { id: row.actor_id, full_name: row.actor_name, role: row.actor_role },
           old_status: row.old_status, new_status: row.new_status, comment: row.comment, created_at: row.created_at }))
-      return { data: { ...publicTicket(ticket), ...(author ? { author } : {}), events } }
+      const attachments = (db.prepare('SELECT * FROM ticket_attachments WHERE ticket_id = ? ORDER BY id ASC').all(id) as unknown as AttachmentRow[]).map(attachmentView)
+      return { data: { ...publicTicket(ticket), ...(author ? { author } : {}), events, attachments } }
     }))
   })
 
