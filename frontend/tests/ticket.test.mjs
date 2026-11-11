@@ -3,7 +3,8 @@ import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 import vm from 'node:vm';
 
-const source = (await readFile(new URL('../js/ticket.js', import.meta.url), 'utf8')).replace(/^import .*;\r?\n/gm, '').replaceAll('export ', '');
+const validationSource = (await readFile(new URL('../js/attachment-validation.js', import.meta.url), 'utf8')).replaceAll('export ', '');
+const source = validationSource + '\n' + (await readFile(new URL('../js/ticket.js', import.meta.url), 'utf8')).replace(/^import .*;\r?\n/gm, '').replaceAll('export ', '');
 const flush = () => new Promise(resolve => setImmediate(resolve));
 const ticket = {
   id: 124, type: 'problem', title: '<script>literal title</script>', description: 'Line one\nLine two', status: 'resolved',
@@ -26,7 +27,7 @@ function harness(getTicket = async () => ({ data: ticket }), updateTicketStatus 
   });
   const get = selector => { if (!elements.has(selector)) elements.set(selector, element()); return elements.get(selector); };
   const document = { querySelector: get, createElement: element, documentElement: { lang: 'ru' } };
-  const context = vm.createContext({ document, getTicket, updateTicketStatus, Intl, t: key => `${document.documentElement.lang}:${key}` });
+  const context = vm.createContext({ document, getTicket, updateTicketStatus, TextEncoder, AbortController, uploadAttachment: async () => ({}), Intl, t: key => `${document.documentElement.lang}:${key}` });
   vm.runInContext(source, context);
   return { context, get, document };
 }
@@ -222,4 +223,58 @@ test('logout clears comment and ignores late save responses', async () => {
   assert.equal(h.get('#ticket-decision-comment').value, '');
   assert.equal(h.get('#ticket-detail-content').hidden, true);
   assert.equal(h.get('#admin-action-status').textContent, '');
+});
+
+
+test('attachment validation accepts four formats at 5 MiB and rejects empty, oversized and unsafe names', () => {
+  const h = harness();
+  for (const name of ['photo.JPG', 'photo.jpeg', 'photo.png', 'photo.webp', 'file.pdf']) {
+    assert.equal(h.context.validateAttachment({ name, size: 5242880 }), '');
+  }
+  for (const file of [{ name: 'a.pdf', size: 0 }, { name: 'a.pdf', size: 5242881 }, { name: 'a.exe', size: 1 }, { name: '../a.pdf', size: 1 }, { name: 'a'.repeat(181) + '.pdf', size: 1 }]) {
+    assert.ok(h.context.validateAttachment(file));
+  }
+});
+
+test('attachments render safely, ignore external URLs and limit uploads to author of new ticket', async () => {
+  const file = { id: 7, original_name: '<b>photo.jpg</b>', size_bytes: 123, mime_type: 'image/jpeg', url: 'https://untrusted.invalid/' };
+  for (const [status, admin, count, hidden] of [['new', false, 1, false], ['new', true, 1, true], ['in_review', false, 1, true], ['resolved', false, 1, true], ['new', false, 3, true]]) {
+    const h = harness(async () => ({ data: { ...ticket, status, attachments: Array(count).fill(file) } }));
+    h.context.openTicketDetails('124', admin); await flush();
+    assert.equal(h.get('#attachment-form').hidden, hidden);
+    const row = h.get('#attachments-list').children[0];
+    assert.equal(row.children[0].textContent, file.original_name);
+    assert.equal(row.children[2].href, '/api/v1/tickets/124/attachments/7');
+    h.document.documentElement.lang = 'kk'; h.context.renderTicketDetails();
+    assert.equal(h.get('#attachments-list').children[0].children[2].textContent, 'kk:attachmentDownload');
+    h.context.closeTicketDetails(); assert.equal(h.get('#attachments-list').children.length, 0);
+  }
+});
+
+test('upload blocks double submit, refreshes after uncertainty and respects changed ticket status', async () => {
+  let reads = 0, writes = 0, rejectUpload;
+  const h = harness(async () => ({ data: { ...ticket, status: ++reads === 1 ? 'new' : 'in_review', attachments: [] } }));
+  h.context.uploadAttachment = () => { writes++; return new Promise((resolve, reject) => { rejectUpload = reject; }); };
+  h.context.openTicketDetails('124'); await flush();
+  h.get('#attachment-file').files = [{ name: 'photo.png', size: 50 }];
+  const submit = () => h.get('#attachment-form').events.submit({ preventDefault() {} });
+  const pending = submit(); await submit(); assert.equal(writes, 1);
+  rejectUpload(new Error('NETWORK_ERROR')); await pending;
+  assert.equal(reads, 2); assert.equal(writes, 1);
+  assert.equal(h.get('#attachment-status').textContent, 'ru:attachmentUncertain');
+  assert.equal(h.get('#attachment-form').hidden, true);
+});
+
+test('cancel refreshes details; navigation aborts and discards late upload response', async () => {
+  let reads = 0;
+  const h = harness(async () => { reads++; return { data: { ...ticket, status: 'new', attachments: [] } }; });
+  h.context.uploadAttachment = (id, file, signal) => new Promise((resolve, reject) => signal.addEventListener('abort', () => reject(new Error('UPLOAD_ABORTED'))));
+  h.context.openTicketDetails('124'); await flush();
+  h.get('#attachment-file').files = [{ name: 'a.pdf', size: 20 }];
+  const submit = () => h.get('#attachment-form').events.submit({ preventDefault() {} });
+  const first = submit(); h.get('#attachment-cancel').events.click(); await first;
+  assert.equal(reads, 2);
+  const second = submit(); h.context.closeTicketDetails(); await second;
+  assert.equal(reads, 2); assert.equal(h.get('#attachments-list').children.length, 0);
+  assert.equal(h.get('#attachment-status').textContent, '');
 });

@@ -1,5 +1,5 @@
-import { getAdminTickets, getAdminStats } from './api.js';
-import { t } from './i18n.js';
+import { getAdminTickets, getAdminStats } from './api.js?v=attachments-20261111-3';
+import { t } from './i18n.js?v=attachments-20261111-3';
 
 const screen = document.querySelector('#admin-screen');
 const filter = document.querySelector('#admin-status-filter');

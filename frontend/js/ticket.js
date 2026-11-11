@@ -1,5 +1,6 @@
-import { getTicket, updateTicketStatus } from './api.js';
-import { t } from './i18n.js';
+import { validateAttachment } from './attachment-validation.js?v=attachments-20261111-3';
+import { getTicket, updateTicketStatus, uploadAttachment } from './api.js?v=attachments-20261111-3';
+import { t } from './i18n.js?v=attachments-20261111-3';
 
 const screen = document.querySelector('#ticket-detail-screen');
 const content = document.querySelector('#ticket-detail-content');
@@ -24,6 +25,35 @@ let saving = false;
 let feedback = '';
 let decisionError = '';
 let commentError = '';
+let uploadController = null;
+let uploadVersion = 0;
+let attachmentFeedback = '';
+const fileInput = document.querySelector('#attachment-file');
+
+
+function renderAttachments() {
+  const list = document.querySelector('#attachments-list');
+  list.replaceChildren();
+  const files = ticket?.attachments ?? [];
+  for (const file of files) {
+    const item = document.createElement('li');
+    item.className = 'ticket';
+    const link = textElement('a', t('attachmentDownload'), 'back-link');
+    // Build a same-origin protected URL; never use an arbitrary metadata URL.
+    if (Number.isSafeInteger(file.id) && file.id > 0) {
+      link.href = `/api/v1/tickets/${ticket.id}/attachments/${file.id}`;
+      link.download = file.original_name;
+    }
+    item.append(textElement('p', file.original_name), textElement('p', `${file.mime_type} · ${file.size_bytes} ${t('attachmentBytes')}`, 'hint'), link);
+    list.append(item);
+  }
+  document.querySelector('#attachments-empty').hidden = files.length > 0;
+  document.querySelector('#attachment-form').hidden = !ticket || adminView || ticket.status !== 'new' || files.length >= 3;
+  fileInput.disabled = Boolean(uploadController);
+  document.querySelector('#attachment-upload').disabled = Boolean(uploadController);
+  document.querySelector('#attachment-cancel').hidden = !uploadController;
+  document.querySelector('#attachment-status').textContent = attachmentFeedback ? t(attachmentFeedback) : '';
+}
 
 function renderActions() {
   actionStatus.hidden = !adminView || !feedback;
@@ -60,6 +90,7 @@ function formatDate(date) {
 }
 
 export function renderTicketDetails() {
+  renderAttachments();
   renderActions();
   statusPanel.hidden = !state;
   status.textContent = state ? t(state) : '';
@@ -134,6 +165,11 @@ export function openTicketDetails(id, admin = false) {
 }
 
 export function closeTicketDetails() {
+  uploadVersion++;
+  uploadController?.abort();
+  uploadController = null;
+  attachmentFeedback = '';
+  fileInput.value = '';
   requestId++;
   ticket = null;
   ticketId = null;
@@ -203,3 +239,36 @@ decisionForm.addEventListener('submit', async event => {
 });
 decision.addEventListener('change', () => { decisionError = ''; renderActions(); });
 comment.addEventListener('input', () => { commentError = ''; renderActions(); });
+
+document.querySelector('#attachment-cancel').addEventListener('click', () => uploadController?.abort());
+document.querySelector('#attachment-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  if (!ticket || adminView || ticket.status !== 'new' || uploadController || (ticket.attachments?.length ?? 0) >= 3) return;
+  const file = fileInput.files?.[0];
+  attachmentFeedback = validateAttachment(file);
+  if (attachmentFeedback) { renderAttachments(); return; }
+  const version = ++uploadVersion;
+  uploadController = new AbortController();
+  attachmentFeedback = 'attachmentUploading';
+  renderAttachments();
+  try {
+    await uploadAttachment(ticket.id, file, uploadController.signal);
+    if (version !== uploadVersion) return;
+    attachmentFeedback = 'attachmentSaved';
+  } catch (error) {
+    if (version !== uploadVersion) return;
+    attachmentFeedback = ({ FILE_TOO_LARGE: 'attachmentTooLarge', UPLOAD_TOO_LARGE: 'attachmentTooLarge',
+      UNSUPPORTED_FILE_TYPE: 'attachmentUnsupported', UNSUPPORTED_MEDIA_TYPE: 'attachmentInvalid',
+      VALIDATION_ERROR: 'attachmentInvalid', ATTACHMENT_LIMIT_REACHED: 'attachmentLimit',
+      ATTACHMENTS_LOCKED: 'attachmentLocked', FORBIDDEN: 'attachmentForbidden', NOT_FOUND: 'ticketNotFound',
+      INVALID_ORIGIN: 'invalidOrigin', RATE_LIMITED: 'rateLimited',
+    })[error.message] ?? 'attachmentUncertain';
+  } finally {
+    if (version === uploadVersion) {
+      uploadController = null;
+      fileInput.value = '';
+      // Also refresh on cancellation/timeout: the upload may already have committed.
+      await loadTicket();
+    }
+  }
+});

@@ -6,7 +6,7 @@
   <title>Голос команды</title>
   <link rel="icon" href="data:,">
   <link rel="stylesheet" href="css/styles.css">
-  <script type="module" src="js/app.js"></script>
+  <script type="module" src="js/app.js?v=attachments-20261111-3"></script>
 </head>
 <body>
   <header class="site-header">
@@ -94,6 +94,13 @@
               <p id="ticket-description-hint" class="hint" data-i18n="ticketDescriptionHint">От 10 до 4000 символов.</p>
               <p id="ticket-description-error" class="field-error" aria-live="polite" hidden></p>
             </div>
+            <div class="field">
+              <label for="ticket-files" data-i18n="newTicketFiles"></label>
+              <input id="ticket-files" type="file" multiple accept=".jpg,.jpeg,.png,.webp,.pdf" aria-describedby="ticket-files-hint ticket-files-error">
+              <p id="ticket-files-hint" class="hint" data-i18n="newTicketFilesHint"></p>
+              <p id="ticket-files-error" class="field-error" aria-live="polite" hidden></p>
+              <button id="clear-ticket-files" class="secondary-button" type="button" data-i18n="clearTicketFiles"></button>
+            </div>
             <button id="send-ticket" class="primary-button" type="submit" data-i18n="sendTicket">Отправить обращение</button>
           </fieldset>
         </form>
@@ -123,6 +130,19 @@
           <p id="detail-status" class="ticket-status"></p>
           <h3 data-i18n="ticketDescription">Описание</h3>
           <p id="detail-description" class="ticket-text"></p>
+        </section>
+        <section class="content-block" aria-labelledby="attachments-heading">
+          <h2 id="attachments-heading" data-i18n="attachmentsTitle"></h2>
+          <ul id="attachments-list" class="ticket-list"></ul>
+          <p id="attachments-empty" class="hint" data-i18n="attachmentsEmpty"></p>
+          <form id="attachment-form" novalidate hidden>
+            <label for="attachment-file" data-i18n="attachmentChoose"></label>
+            <input id="attachment-file" type="file" accept=".jpg,.jpeg,.png,.webp,.pdf" aria-describedby="attachment-hint attachment-status">
+            <p id="attachment-hint" class="hint" data-i18n="attachmentHint"></p>
+            <button id="attachment-upload" class="primary-button" type="submit" data-i18n="attachmentUpload"></button>
+          </form>
+          <button id="attachment-cancel" class="secondary-button" type="button" data-i18n="attachmentCancel" hidden></button>
+          <p id="attachment-status" class="status" role="status"></p>
         </section>
         <section class="content-block" aria-labelledby="detail-response-heading">
           <h2 id="detail-response-heading" data-i18n="managementReply">Ответ администрации</h2>

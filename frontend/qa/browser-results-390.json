@@ -1,0 +1,108 @@
+{
+  "results": [
+    {
+      "step": "create-result",
+      "text": "Обращение отправлено. Номер обращения: № 1. Вложения загружены. Загружено файлов: 1/1."
+    },
+    {
+      "step": "employee-details",
+      "text": "фото.pdf\n\napplication/pdf · 51 байт\n\nСкачать",
+      "databaseCount": 1
+    },
+    {
+      "step": "employee-download",
+      "result": "identical bytes"
+    },
+    {
+      "step": "admin-download",
+      "result": "identical bytes"
+    },
+    {
+      "step": "final",
+      "result": "PASS"
+    }
+  ],
+  "traffic": [
+    {
+      "method": "GET",
+      "path": "/api/v1/auth/me",
+      "status": 401
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/auth/login",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/tickets",
+      "status": 200
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/tickets",
+      "status": 201
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/tickets/1/attachments",
+      "status": 201
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/tickets/1",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/tickets/1",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/tickets/1/attachments/1",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/auth/me",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/tickets/1",
+      "status": 200
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/auth/logout",
+      "status": 204
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/auth/login",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/stats",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/tickets",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/tickets/1",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/tickets/1/attachments/1",
+      "status": 200
+    }
+  ],
+  "errors": []
+}

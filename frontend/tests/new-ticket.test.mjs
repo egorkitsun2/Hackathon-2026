@@ -3,7 +3,8 @@ import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 import vm from 'node:vm';
 
-const source = (await readFile(new URL('../js/new-ticket.js', import.meta.url), 'utf8')).replace(/^import .*;\r?\n/gm, '').replaceAll('export ', '');
+const validationSource = (await readFile(new URL('../js/attachment-validation.js', import.meta.url), 'utf8')).replaceAll('export ', '');
+const source = validationSource + '\n' + (await readFile(new URL('../js/new-ticket.js', import.meta.url), 'utf8')).replace(/^import .*;\r?\n/gm, '').replaceAll('export ', '');
 
 function harness(createTicket = async () => ({ data: { id: 42 } })) {
   const elements = new Map();
@@ -20,7 +21,7 @@ function harness(createTicket = async () => ({ data: { id: 42 } })) {
     });
     return elements.get(selector);
   }
-  const context = vm.createContext({ document: { querySelector: get }, createTicket, t: key => `${language}:${key}` });
+  const context = vm.createContext({ document: { querySelector: get }, createTicket, TextEncoder, AbortController, uploadAttachment: async () => ({}), getTicket: async () => ({ data: { attachments: [] } }), t: key => `${language}:${key}` });
   vm.runInContext(source, context);
   function fill(values = {}) {
     for (const [key, value] of Object.entries({ type: 'problem', title: ' Test title ', description: ' A valid description ', ...values })) get(`#ticket-${key}`).value = value;
@@ -102,4 +103,53 @@ test('logout reset discards late responses from a previous session', async () =>
   assert.equal(h.get('#create-ticket-status').textContent, '');
   assert.equal(h.get('#ticket-title').value, '');
   assert.equal(h.get('#new-ticket-form').hidden, false);
+});
+
+
+test('selected attachments validate before creation and upload sequentially after one create', async () => {
+  let creates = 0; const calls = [];
+  const h = harness(async () => { creates++; return { data: { id: 42 } }; });
+  h.fill(); h.get('#ticket-files').files = [{ name: 'bad.exe', size: 1 }];
+  await h.submit(); assert.equal(creates, 0);
+  h.get('#ticket-files').files = [{ name: 'a.pdf', size: 10 }, { name: 'b.png', size: 10 }];
+  h.context.uploadAttachment = async (id, file) => { calls.push(file.name); assert.equal(id, 42); };
+  await h.submit();
+  assert.equal(creates, 1); assert.deepEqual(calls, ['a.pdf', 'b.png']);
+  assert.match(h.get('#create-ticket-status').textContent, /2\/2/);
+  await h.submit(); assert.equal(creates, 1);
+});
+
+test('partial file failure stops the batch, refreshes actual attachments, never recreates ticket', async () => {
+  let creates = 0, uploads = 0, reads = 0;
+  const h = harness(async () => { creates++; return { data: { id: 42 } }; });
+  h.fill(); h.get('#ticket-files').files = ['a.pdf','b.pdf','c.pdf'].map(name => ({ name, size: 10 }));
+  h.context.uploadAttachment = async () => { if (++uploads === 2) throw new Error('NETWORK_ERROR'); };
+  h.context.getTicket = async () => { reads++; return { data: { attachments: [{ id: 1 }] } }; };
+  await h.submit();
+  assert.equal(uploads, 2); assert.equal(reads, 2);
+  assert.match(h.get('#create-ticket-status').textContent, /newTicketFilesPartial/);
+  assert.equal(h.get('#created-ticket-details').hidden, false);
+  await h.submit(); assert.equal(creates, 1);
+});
+
+test('reset during upload aborts and stops subsequent files without restoring private results', async () => {
+  const h = harness(); let calls = 0;
+  h.fill(); h.get('#ticket-files').files = ['a.pdf','b.pdf'].map(name => ({ name, size: 10 }));
+  h.context.uploadAttachment = (id, file, signal) => { calls++; return new Promise((resolve, reject) => signal.addEventListener('abort', () => reject(new Error('UPLOAD_ABORTED')))); };
+  const work = h.submit(); await new Promise(resolve => setImmediate(resolve));
+  h.context.resetNewTicket(); await work;
+  assert.equal(calls, 1); assert.equal(h.get('#created-ticket-details').hidden, true);
+  assert.equal(h.get('#create-ticket-status').textContent, '');
+});
+
+
+test('rejected file shows the specific reason while preserving the created ticket', async () => {
+  const h = harness(); h.fill();
+  h.get('#ticket-files').files = [{ name: 'photo.pdf', size: 20 }];
+  h.context.uploadAttachment = async () => { const error = new Error('UNSUPPORTED_FILE_TYPE'); error.status = 415; throw error; };
+  await h.submit();
+  assert.match(h.get('#create-ticket-status').textContent, /attachmentUnsupported/);
+  assert.match(h.get('#create-ticket-status').textContent, /UNSUPPORTED_FILE_TYPE \(HTTP 415\)/);
+  assert.match(h.get('#create-ticket-status').textContent, /0\/1/);
+  assert.equal(h.get('#created-ticket-details').hidden, false);
 });

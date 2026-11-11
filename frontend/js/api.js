@@ -5,10 +5,11 @@ export async function request(path, options = {}) {
     response = await fetch(`/api/v1${path}`, {
       ...options,
       credentials: 'same-origin',
-      headers: { ...(options.body ? { 'Content-Type': 'application/json' } : {}), ...options.headers },
+      headers: { ...(options.body && !(options.body instanceof FormData) ? { 'Content-Type': 'application/json' } : {}), ...options.headers },
       cache: 'no-store',
     });
-  } catch {
+  } catch (error) {
+    if (error.name === 'AbortError') throw new Error('UPLOAD_ABORTED');
     throw new Error('NETWORK_ERROR');
   }
   if (response.status === 204) return null;
@@ -23,6 +24,7 @@ export async function request(path, options = {}) {
     }
     if (code === 'PASSWORD_CHANGE_REQUIRED') globalThis.window?.dispatchEvent(new Event('password-change-required'));
     const error = new Error(code);
+    error.status = response.status;
     error.details = result.error?.details;
     const retry = response.headers?.get('Retry-After');
     error.retryAfter = retry && /^\d+$/.test(retry) ? Number(retry) : null;
@@ -109,3 +111,9 @@ export async function updateTicketStatus(id, { status, comment }) {
 }
 
 export const getAdminStats = () => request('/admin/stats');
+
+export function uploadAttachment(id, file, signal) {
+  const body = new FormData();
+  body.append('file', file);
+  return request(`/tickets/${id}/attachments`, { method: 'POST', body, signal });
+}
