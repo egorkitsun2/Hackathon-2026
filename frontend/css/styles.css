@@ -130,3 +130,8 @@ h2 { margin: 0; font-size: var(--brand-size); }
 
 .temporary-password { overflow-wrap: anywhere; font-family: monospace; margin-block: var(--space-sm); user-select: all; }
 #close-user-created { margin-top: var(--space-md); }
+
+.stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 12rem), 1fr)); gap: var(--space-md); margin: var(--space-md) 0 0; }
+.stat-card { min-width: 0; padding: var(--space-md); border: 1px solid var(--color-border); border-radius: var(--radius); background: var(--color-inset); overflow-wrap: anywhere; }
+.stat-card dt { color: var(--color-muted); font-size: var(--small-size); }
+.stat-card dd { margin: var(--space-xs) 0 0; font-size: var(--heading-size); font-weight: 600; }

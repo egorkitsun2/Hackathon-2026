@@ -1,5 +1,5 @@
-import { getAdminTickets } from './api.js';
-import { t } from './i18n.js';
+import { getAdminTickets, getAdminStats } from './api.js?v=attachments-20261111-3';
+import { t } from './i18n.js?v=attachments-20261111-3';
 
 const screen = document.querySelector('#admin-screen');
 const filter = document.querySelector('#admin-status-filter');
@@ -15,6 +15,48 @@ let page = 1;
 let result = null;
 let state = '';
 let requestId = 0;
+let statsRequestId = 0;
+let stats = null;
+let statsState = '';
+const metrics = [
+  ['employees', 'total', 'statsEmployeesTotal'], ['employees', 'active', 'statsEmployeesActive'],
+  ['tickets', 'total', 'statsTicketsTotal'], ['tickets', 'new', 'statsTicketsNew'],
+  ['tickets', 'in_review', 'statsTicketsReview'], ['tickets', 'resolved', 'statsTicketsResolved'],
+  ['tickets', 'rejected', 'statsTicketsRejected'],
+];
+
+function renderStats() {
+  const list = document.querySelector('#admin-stats');
+  list.replaceChildren();
+  document.querySelector('#admin-stats-status').textContent = statsState ? t(statsState) : '';
+  document.querySelector('#retry-admin-stats').hidden = statsState !== 'statsError';
+  if (!stats) return;
+  for (const [group, field, label] of metrics) {
+    const card = document.createElement('div');
+    card.className = 'stat-card';
+    card.append(textElement('dt', t(label)), textElement('dd', String(stats[group][field])));
+    list.append(card);
+  }
+}
+
+async function loadStats() {
+  if (!profile) return;
+  const id = ++statsRequestId;
+  stats = null; statsState = 'statsLoading'; renderStats();
+  try {
+    const response = await getAdminStats();
+    if (id !== statsRequestId) return;
+    if (!metrics.every(([group, field]) => Number.isSafeInteger(response.data?.[group]?.[field]) && response.data[group][field] >= 0)) throw new Error('API_UNAVAILABLE');
+    stats = response.data; statsState = '';
+  } catch (error) {
+    if (id !== statsRequestId) return;
+    statsState = error.message === 'FORBIDDEN' ? 'accountsForbidden' : 'statsError';
+  } finally {
+    if (id === statsRequestId) renderStats();
+  }
+}
+
+document.querySelector('#retry-admin-stats').addEventListener('click', loadStats);
 
 function textElement(tag, text, className) {
   const element = document.createElement(tag);
@@ -24,6 +66,7 @@ function textElement(tag, text, className) {
 }
 
 export function renderAdminQueue() {
+  renderStats();
   document.querySelector('#admin-name').textContent = profile ? `${t('greeting')}, ${profile.full_name}` : '';
   rows.replaceChildren();
   status.textContent = state ? t(state) : '';
@@ -83,11 +126,13 @@ async function loadQueue() {
 
 export function openAdminQueue(user) {
   profile = user;
+  loadStats();
   loadQueue();
 }
 
 export function closeAdminQueue(reset = false) {
   requestId++;
+  statsRequestId++; stats = null; statsState = '';
   result = null;
   profile = null;
   state = '';

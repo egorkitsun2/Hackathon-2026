@@ -170,3 +170,19 @@ test('admin PATCH uses exact contract, omits comment for review, and trims final
     assert.equal(bodies.length, 3);
   } finally { globalThis.fetch = previous; }
 });
+
+
+test('upload sends one multipart file without forcing JSON or boundary', async () => {
+  const previous = globalThis.fetch;
+  globalThis.fetch = async (url, options) => {
+    assert.equal(url, '/api/v1/tickets/124/attachments');
+    assert.equal(options.credentials, 'same-origin');
+    assert.equal(options.headers['Content-Type'], undefined);
+    assert.ok(options.body instanceof FormData);
+    assert.deepEqual([...options.body.keys()], ['file']);
+    assert.equal(options.body.get('file').name, 'a.pdf');
+    return Response.json({ data: { id: 7 } }, { status: 201 });
+  };
+  try { assert.equal((await api.uploadAttachment(124, new File(['%PDF-1.4'], 'a.pdf'))).data.id, 7); }
+  finally { globalThis.fetch = previous; }
+});

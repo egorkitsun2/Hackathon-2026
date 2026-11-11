@@ -1,13 +1,18 @@
 // Real backend integration in isolated memory; does not touch the local demo database.
 import assert from 'node:assert/strict';
 import { randomBytes } from 'node:crypto';
-import { readFile } from 'node:fs/promises';
+import { readFile, mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join, dirname, resolve, basename } from 'node:path';
+import { createRequire } from 'node:module';
 import { createApp } from '../../backend/src/index.ts';
 import { openDatabase, migrate } from '../../backend/src/db.ts';
 import { hashPassword } from '../../backend/src/security.ts';
 
+const storage = await mkdtemp(join(tmpdir(), 'team-voice-frontend-attachments-'));
 const db = openDatabase(':memory:');
 const previousFetch = globalThis.fetch;
+let httpServer;
 try {
   migrate(db);
   const password = randomBytes(24).toString('base64url');
@@ -17,12 +22,21 @@ try {
     db.prepare(`INSERT INTO users (phone, full_name, department, position, password_hash, role, is_active, created_at)
       SELECT ?, ?, department, position, password_hash, ?, is_active, created_at FROM users WHERE id = 1`).run(phone, `Integration ${role}`, role);
   }
-  const origin = 'http://localhost:8787';
-  const app = await createApp({ db, origin });
+  let origin = 'http://localhost:8787';
+  let app;
+  if (process.env.TEST_HTTP === '1') {
+    const { serve } = createRequire(new URL('../../backend/package.json', import.meta.url))('@hono/node-server');
+    httpServer = serve({ hostname: '127.0.0.1', port: 0, fetch: request => app.fetch(request) });
+    await new Promise((resolve, reject) => { httpServer.once('listening', resolve); httpServer.once('error', reject); });
+    origin = `http://127.0.0.1:${httpServer.address().port}`;
+  }
+  app = await createApp({ db, origin, attachmentsDir: storage });
   let cookie = '';
   globalThis.fetch = async (url, options = {}) => {
-    const headers = { ...options.headers, ...(cookie ? { Cookie: cookie } : {}), ...(['POST', 'PATCH'].includes(options.method) ? { Origin: origin } : {}) };
-    const response = await app.request(new URL(url, origin), { ...options, headers });
+    const headers = { ...options.headers, ...(httpServer ? { Connection: 'close' } : {}), ...(cookie ? { Cookie: cookie } : {}), ...(['POST', 'PATCH'].includes(options.method) ? { Origin: origin } : {}) };
+    const response = httpServer
+      ? await previousFetch(new URL(url, origin), { ...options, headers })
+      : await app.request(new URL(url, origin), { ...options, headers });
     const setCookie = response.headers.get('set-cookie');
     if (setCookie) cookie = setCookie.split(';')[0];
     return response;
@@ -34,6 +48,14 @@ try {
   const created = await api.createTicket({ type: 'suggestion', title: ' Integration ticket ', description: ' Created only in an isolated test database. ' });
   assert.ok(Number.isSafeInteger(created.data.id));
   assert.equal(created.data.status, 'new');
+  const attachment = await api.uploadAttachment(created.data.id, new File(['%PDF-1.4\nfrontend isolated test\n%%EOF'], 'фото.pdf', { type: 'application/pdf' }));
+  assert.equal(attachment.data.original_name, 'фото.pdf');
+  assert.equal((await api.getTicket(created.data.id)).data.attachments.length, 1);
+  const downloaded = await fetch(attachment.data.url);
+  assert.equal(downloaded.status, 200);
+  assert.match(downloaded.headers.get('content-disposition'), /^attachment/);
+  assert.match(await downloaded.text(), /^%PDF-/);
+
   assert.equal(created.data.title, 'Integration ticket');
   const list = await api.getMyTickets();
   assert.equal(list.pagination.total, 1);
@@ -57,6 +79,10 @@ try {
   assert.equal((await api.getAdminTickets({ status: 'resolved' })).pagination.total, 0);
   assert.equal((await api.getAdminTickets({ page: 2, limit: 1 })).data.length, 0);
   const adminDetail = (await api.getTicket(created.data.id)).data;
+  assert.equal(adminDetail.attachments.length, 1);
+  assert.equal(adminDetail.attachments[0].id, attachment.data.id);
+  assert.equal((await fetch(attachment.data.url)).status, 200);
+  console.log('PASS: employee and admin both receive attachment metadata and protected download; ' + (httpServer ? 'real HTTP multipart transport.' : 'in-process transport.'));
   assert.equal(adminDetail.author.full_name, 'Integration employee');
   await assert.rejects(api.updateTicketStatus(created.data.id, { status: 'resolved', comment: 'Forbidden direct transition' }), /INVALID_TRANSITION/);
   await api.updateTicketStatus(created.data.id, { status: 'in_review' });
@@ -66,6 +92,7 @@ try {
   assert.equal((await api.getAdminTickets({ status: 'new' })).pagination.total, 0);
   assert.equal((await api.getAdminTickets({ status: 'resolved' })).pagination.total, 1);
   await api.login({ phone: '+77000000001', password });
+  await assert.rejects(api.uploadAttachment(created.data.id, new File(['%PDF-1.4'], 'locked.pdf', { type: 'application/pdf' })), /ATTACHMENTS_LOCKED/);
   const resolved = (await api.getTicket(created.data.id)).data;
   assert.equal(resolved.status, 'resolved');
   assert.deepEqual(resolved.events.map(event => event.new_status), ['new', 'in_review', 'resolved']);
@@ -87,7 +114,9 @@ try {
   await assert.rejects(api.getTicket(created.data.id), /UNAUTHORIZED/);
   await assert.rejects(api.createTicket({ type: 'problem', title: 'Valid title', description: 'Valid description' }), /UNAUTHORIZED/);
   await api.login({ phone: '+77000000003', password });
+  const statsBefore = (await api.getAdminStats()).data;
   const account = await api.createUser({ phone: '+77000000004', full_name: ' Account test ', department: ' QA ', position: ' Tester ' });
+  assert.equal((await api.getAdminStats()).data.employees.total, statsBefore.employees.total + 1);
   assert.equal(account.data.user.must_change_password, true);
   assert.equal(account.data.user.full_name, 'Account test');
   assert.equal((await api.getUsers()).data.some(user => 'temporary_password' in user), false);
@@ -110,7 +139,14 @@ try {
   await assert.rejects(api.getUsers(), /FORBIDDEN/);
   await api.login({ phone: '+77000000003', password });
   const adminCookie = cookie;
+  const statsAfter = (await api.getAdminStats()).data;
+  assert.equal(statsAfter.tickets.total, statsBefore.tickets.total + 1);
+  assert.equal(statsAfter.tickets.new, statsBefore.tickets.new + 1);
+  assert.equal(statsAfter.tickets.resolved, 1);
+  assert.equal(statsAfter.tickets.rejected, 1);
+  assert.equal(statsAfter.tickets.in_review, 0);
   assert.equal((await api.updateUser(account.data.user.id, false)).data.user.is_active, false);
+  assert.equal((await api.getAdminStats()).data.employees.active, statsAfter.employees.active - 1);
   cookie = employeeCookie;
   await assert.rejects(api.getMe(), /UNAUTHORIZED/);
   await assert.rejects(api.login({ phone: account.data.user.phone, password: newPassword }), /ACCOUNT_DISABLED/);
@@ -125,5 +161,12 @@ try {
   console.log('PASS: real cookie login, create/list/details, full decision history, final comment, foreign ticket denied, validation and logout; isolated database.');
 } finally {
   globalThis.fetch = previousFetch;
+  if (httpServer) {
+    httpServer.closeAllConnections();
+    await new Promise(resolve => httpServer.close(resolve));
+  }
   db.close();
+  assert.equal(dirname(resolve(storage)), resolve(tmpdir()));
+  assert.ok(basename(storage).startsWith('team-voice-frontend-attachments-'));
+  await rm(storage, { recursive: true, force: true });
 }

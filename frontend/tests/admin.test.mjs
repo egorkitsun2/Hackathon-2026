@@ -6,6 +6,7 @@ import vm from 'node:vm';
 const source = (await readFile(new URL('../js/admin.js', import.meta.url), 'utf8')).replace(/^import .*;\r?\n/gm, '').replaceAll('export ', '');
 const flush = () => new Promise(resolve => setImmediate(resolve));
 const ticket = { id: 124, type: 'problem', title: '<b>Literal title</b>', status: 'new', created_at: '2026-11-10T09:00:00.000Z', author: { full_name: 'Author', department: 'Warehouse', position: 'Employee' } };
+const statsData = { employees: { total: 3, active: 2 }, tickets: { total: 10, new: 4, in_review: 3, resolved: 2, rejected: 1 } };
 const user = { id: 3, full_name: 'Administrator', role: 'admin' };
 const response = (page = 1, data = [ticket], total = 21) => ({ data, pagination: { page, limit: 20, total } });
 
@@ -19,7 +20,7 @@ function harness(getAdminTickets = async ({ page }) => response(page)) {
   });
   const get = selector => { if (!elements.has(selector)) elements.set(selector, element()); return elements.get(selector); };
   const document = { querySelector: get, createElement: element, documentElement: { lang: 'ru' } };
-  const context = vm.createContext({ document, getAdminTickets, Intl, t: key => `${document.documentElement.lang}:${key}` });
+  const context = vm.createContext({ document, getAdminTickets, getAdminStats: async () => ({ data: statsData }), Intl, t: key => `${document.documentElement.lang}:${key}` });
   vm.runInContext(source, context);
   return { context, get, document };
 }
@@ -94,4 +95,43 @@ test('stale filter response cannot overwrite a newer filter or repopulate after 
   await flush();
   assert.equal(h.get('#admin-ticket-rows').children.length, 0);
   assert.equal(h.get('#admin-name').textContent, '');
+});
+
+
+test('stats render seven real counts, preserve zero and translate without refetching', async () => {
+  const h = harness();
+  h.context.getAdminStats = async () => ({ data: { ...statsData, employees: { total: 3, active: 0 } } });
+  h.context.openAdminQueue(user); await flush();
+  const cards = h.get('#admin-stats').children;
+  assert.equal(cards.length, 7);
+  assert.deepEqual(cards.map(card => card.children[1].textContent), ['3', '0', '10', '4', '3', '2', '1']);
+  h.document.documentElement.lang = 'kk'; h.context.renderAdminQueue();
+  assert.equal(h.get('#admin-stats').children[0].children[0].textContent, 'kk:statsEmployeesTotal');
+});
+
+test('stats failure is independent of queue, retry works and reopening refreshes', async () => {
+  const h = harness();
+  h.context.getAdminStats = async () => { throw new Error('NETWORK_ERROR'); };
+  h.context.openAdminQueue(user); await flush();
+  assert.equal(h.get('#retry-admin-stats').hidden, false);
+  assert.equal(h.get('#admin-ticket-rows').children.length, 1);
+  assert.equal(h.get('#admin-stats').children.length, 0);
+  let calls = 0;
+  h.context.getAdminStats = async () => { calls++; return { data: statsData }; };
+  await h.get('#retry-admin-stats').events.click();
+  assert.equal(h.get('#admin-stats').children.length, 7);
+  h.context.closeAdminQueue(); h.context.openAdminQueue(user); await flush();
+  assert.equal(calls, 2);
+});
+
+test('late stats cannot overwrite a later panel or reappear after logout', async () => {
+  const h = harness(); const pending = [];
+  h.context.getAdminStats = () => new Promise(resolve => pending.push(resolve));
+  h.context.openAdminQueue(user); h.context.closeAdminQueue(); h.context.openAdminQueue(user);
+  pending[1]({ data: statsData }); await flush();
+  pending[0]({ data: { ...statsData, employees: { total: 99, active: 99 } } }); await flush();
+  assert.equal(h.get('#admin-stats').children[0].children[1].textContent, '3');
+  h.context.openAdminQueue(user); h.context.closeAdminQueue(true);
+  pending[2]({ data: statsData }); await flush();
+  assert.equal(h.get('#admin-stats').children.length, 0);
 });

@@ -1,10 +1,10 @@
-import { openAccounts, closeAccounts, renderAccounts } from './accounts.js';
-import { login, logout, getMe, normalizePhone } from './api.js';
-import { setLanguage, t } from './i18n.js';
-import { openEmployee, closeEmployee, renderEmployee } from './employee.js';
-import { openNewTicket, resetNewTicket, renderNewTicket } from './new-ticket.js';
-import { openTicketDetails, closeTicketDetails, renderTicketDetails } from './ticket.js';
-import { openAdminQueue, closeAdminQueue, renderAdminQueue } from './admin.js';
+import { openAccounts, closeAccounts, renderAccounts } from './accounts.js?v=attachments-20261111-3';
+import { login, logout, getMe, normalizePhone } from './api.js?v=attachments-20261111-3';
+import { setLanguage, t } from './i18n.js?v=attachments-20261111-3';
+import { openEmployee, closeEmployee, renderEmployee } from './employee.js?v=attachments-20261111-3';
+import { openNewTicket, resetNewTicket, renderNewTicket } from './new-ticket.js?v=attachments-20261111-3';
+import { openTicketDetails, closeTicketDetails, renderTicketDetails } from './ticket.js?v=attachments-20261111-3';
+import { openAdminQueue, closeAdminQueue, renderAdminQueue } from './admin.js?v=attachments-20261111-3';
 
 const form = document.querySelector('#login-form');
 const phone = document.querySelector('#phone');

@@ -1,5 +1,5 @@
-import { getMyTickets } from './api.js';
-import { t } from './i18n.js';
+import { getMyTickets } from './api.js?v=attachments-20261111-3';
+import { t } from './i18n.js?v=attachments-20261111-3';
 
 const screen = document.querySelector('#employee-screen');
 const list = document.querySelector('#ticket-list');
