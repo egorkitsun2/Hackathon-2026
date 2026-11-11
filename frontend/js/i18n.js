@@ -1,5 +1,8 @@
 const messages = {
   ru: {
+    statsTitle: 'Статистика', statsLoading: 'Загрузка статистики…', statsError: 'Не удалось загрузить статистику. Попробуйте ещё раз.',
+    statsEmployeesTotal: 'Всего сотрудников', statsEmployeesActive: 'Активных сотрудников',
+    statsTicketsTotal: 'Всего обращений', statsTicketsNew: 'Новых', statsTicketsReview: 'На рассмотрении', statsTicketsResolved: 'Решённых', statsTicketsRejected: 'Отклонённых',
     employees: 'Сотрудники', createEmployee: 'Создать сотрудника', fullName: 'ФИО', department: 'Отдел', position: 'Должность',
     changePassword: 'Сменить пароль', currentPassword: 'Текущий / временный пароль', newPassword: 'Новый пароль', repeatPassword: 'Повторите новый пароль',
     passwordChangeHint: 'Перед началом работы замените временный пароль. Новый пароль: 12–128 символов, должен отличаться от текущего и не состоять только из пробелов.',
@@ -130,6 +133,9 @@ const messages = {
     loginUnavailable: 'Поля заполнены корректно. Подключение к серверу ещё не готово — вход не выполнен.',
   },
   kk: {
+    statsTitle: 'Статистика', statsLoading: 'Статистика жүктелуде…', statsError: 'Статистиканы жүктеу мүмкін болмады. Қайталап көріңіз.',
+    statsEmployeesTotal: 'Барлық қызметкерлер', statsEmployeesActive: 'Белсенді қызметкерлер',
+    statsTicketsTotal: 'Барлық өтініштер', statsTicketsNew: 'Жаңа', statsTicketsReview: 'Қаралуда', statsTicketsResolved: 'Шешілген', statsTicketsRejected: 'Қабылданбаған',
     employees: 'Қызметкерлер', createEmployee: 'Қызметкер қосу', fullName: 'Аты-жөні', department: 'Бөлім', position: 'Лауазым',
     changePassword: 'Құпиясөзді өзгерту', currentPassword: 'Ағымдағы / уақытша құпиясөз', newPassword: 'Жаңа құпиясөз', repeatPassword: 'Жаңа құпиясөзді қайталаңыз',
     passwordChangeHint: 'Жұмысты бастамас бұрын уақытша құпиясөзді өзгертіңіз. Жаңа құпиясөз: 12–128 таңба, ағымдағыдан өзгеше және тек бос орындардан тұрмауы керек.',

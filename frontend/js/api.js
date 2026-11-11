@@ -107,3 +107,5 @@ export async function updateTicketStatus(id, { status, comment }) {
   }
   return request(`/admin/tickets/${id}`, { method: 'PATCH', body: JSON.stringify(body) });
 }
+
+export const getAdminStats = () => request('/admin/stats');

@@ -87,7 +87,9 @@ try {
   await assert.rejects(api.getTicket(created.data.id), /UNAUTHORIZED/);
   await assert.rejects(api.createTicket({ type: 'problem', title: 'Valid title', description: 'Valid description' }), /UNAUTHORIZED/);
   await api.login({ phone: '+77000000003', password });
+  const statsBefore = (await api.getAdminStats()).data;
   const account = await api.createUser({ phone: '+77000000004', full_name: ' Account test ', department: ' QA ', position: ' Tester ' });
+  assert.equal((await api.getAdminStats()).data.employees.total, statsBefore.employees.total + 1);
   assert.equal(account.data.user.must_change_password, true);
   assert.equal(account.data.user.full_name, 'Account test');
   assert.equal((await api.getUsers()).data.some(user => 'temporary_password' in user), false);
@@ -110,7 +112,14 @@ try {
   await assert.rejects(api.getUsers(), /FORBIDDEN/);
   await api.login({ phone: '+77000000003', password });
   const adminCookie = cookie;
+  const statsAfter = (await api.getAdminStats()).data;
+  assert.equal(statsAfter.tickets.total, statsBefore.tickets.total + 1);
+  assert.equal(statsAfter.tickets.new, statsBefore.tickets.new + 1);
+  assert.equal(statsAfter.tickets.resolved, 1);
+  assert.equal(statsAfter.tickets.rejected, 1);
+  assert.equal(statsAfter.tickets.in_review, 0);
   assert.equal((await api.updateUser(account.data.user.id, false)).data.user.is_active, false);
+  assert.equal((await api.getAdminStats()).data.employees.active, statsAfter.employees.active - 1);
   cookie = employeeCookie;
   await assert.rejects(api.getMe(), /UNAUTHORIZED/);
   await assert.rejects(api.login({ phone: account.data.user.phone, password: newPassword }), /ACCOUNT_DISABLED/);
