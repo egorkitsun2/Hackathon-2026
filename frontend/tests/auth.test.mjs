@@ -6,7 +6,7 @@ import vm from 'node:vm';
 const source = (await readFile(new URL('../js/app.js', import.meta.url), 'utf8')).replace(/^import .*;\r?\n/gm, '');
 const flush = () => new Promise(resolve => setImmediate(resolve));
 
-function harness({ restoredUser = null, loginError = null, hash = '#/employee', required = false } = {}) {
+function harness({ restoredUser = null, loginError = null, hash = '#/employee', required = false, restoreRequest = null } = {}) {
   const elements = new Map();
   const handlers = {};
   const clock = { now: Date.now(), tick: null };
@@ -35,7 +35,7 @@ function harness({ restoredUser = null, loginError = null, hash = '#/employee', 
     window: { addEventListener(name, callback) { handlers[name] = callback; } },
     normalizePhone: value => value === '87000000001' ? '+77000000001' : null,
     login: async () => { if (loginError) throw typeof loginError === 'string' ? new Error(loginError) : loginError; return { data: { user }, meta: { passwordChangeRequired: required } }; },
-    getMe: async () => { if (!restoredUser) throw new Error('UNAUTHORIZED'); return { data: { user: restoredUser }, meta: { passwordChangeRequired: required } }; },
+    getMe: restoreRequest ?? (async () => { if (!restoredUser) throw new Error('UNAUTHORIZED'); return { data: { user: restoredUser }, meta: { passwordChangeRequired: required } }; }),
     logout: async () => null, invalidateSessionRequests() {},
     openEmployee: profile => opened.push(profile), closeEmployee() {}, renderEmployee() {},
     openNewTicket() {}, closeNewTicket() {}, resetNewTicket() {}, renderNewTicket() {},
@@ -176,4 +176,48 @@ test('login countdown follows Retry-After and enables retry after expiry', async
   h.clock.now += 1000; h.clock.tick();
   assert.equal(h.get('#submit-login').disabled, false);
   assert.equal(h.get('#login-status').textContent, 'loginRetryReady');
+});
+
+
+test('initial HTML hides login before modules or session requests run', async () => {
+  const html = await readFile(new URL('../index.html', import.meta.url), 'utf8');
+  assert.match(html, /<section\b[^>]*id="login-screen"[^>]*\bhidden\b/);
+  assert.match(html, /<div\b[^>]*id="session-loading"[^>]*role="status"/);
+});
+
+test('delayed session restoration never exposes login for either role and preserves deep links', async () => {
+  for (const role of ['employee', 'admin']) {
+    let resolve;
+    const hash = role === 'admin' ? '#/admin/tickets/124' : '#/tickets/124';
+    const h = harness({ hash, restoreRequest: () => new Promise(done => { resolve = done; }) });
+    await flush();
+    assert.equal(h.get('#login-screen').hidden, true);
+    assert.equal(h.get('#session-loading').hidden, false);
+    assert.equal(h.get('#ticket-detail-screen').hidden, true);
+    assert.equal(h.location.hash, hash);
+    h.handlers.hashchange();
+    assert.equal(h.get('#login-screen').hidden, true);
+    resolve({ data: { user: { id: 1, role } } });
+    await flush();
+    assert.equal(h.get('#login-screen').hidden, true);
+    assert.equal(h.get('#session-loading').hidden, true);
+    assert.equal(h.get('#ticket-detail-screen').hidden, false);
+    assert.equal(h.location.hash, hash);
+  }
+});
+
+test('anonymous and failed session checks reveal a usable login only after completion', async () => {
+  for (const code of ['UNAUTHORIZED', 'NETWORK_ERROR']) {
+    let reject;
+    const h = harness({ restoreRequest: () => new Promise((_, fail) => { reject = fail; }) });
+    assert.equal(h.get('#login-screen').hidden, true);
+    assert.equal(h.get('#session-loading').hidden, false);
+    reject(new Error(code));
+    await flush();
+    assert.equal(h.get('#session-loading').hidden, true);
+    assert.equal(h.get('#login-screen').hidden, false);
+    assert.equal(h.get('#submit-login').disabled, false);
+    assert.equal(h.location.hash, '#/login');
+    assert.equal(h.get('#login-status').textContent, code === 'UNAUTHORIZED' ? '' : 'networkError');
+  }
 });
