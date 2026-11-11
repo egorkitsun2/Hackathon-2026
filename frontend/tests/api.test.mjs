@@ -5,6 +5,49 @@ import test from 'node:test';
 const source = await readFile(new URL('../js/api.js', import.meta.url), 'utf8');
 const api = await import(`data:text/javascript;base64,${Buffer.from(source).toString('base64')}`);
 
+test('password state comes from headers; required change and ended sessions are distinct from wrong credentials', async () => {
+  const previous = globalThis.fetch;
+  const previousWindow = globalThis.window;
+  const events = [];
+  globalThis.window = { dispatchEvent(event) { events.push([event.type, event.code]); } };
+  try {
+    globalThis.fetch = async () => Response.json({ data: { user: { id: 1 } } }, { headers: { 'X-Password-Change-Required': 'true' } });
+    const result = await api.getMe();
+    assert.equal(result.meta.passwordChangeRequired, true);
+    assert.deepEqual(result.data.user, { id: 1 });
+    globalThis.fetch = async () => Response.json({ error: { code: 'INVALID_CREDENTIALS' } }, { status: 401 });
+    await assert.rejects(api.changePassword({ current_password: 'wrong', new_password: 'long-password' }), /INVALID_CREDENTIALS/);
+    assert.equal(events.length, 0);
+    for (const code of ['PASSWORD_CHANGE_REQUIRED', 'ACCOUNT_DISABLED', 'PASSWORD_CHANGED']) {
+      globalThis.fetch = async () => Response.json({ error: { code } }, { status: 403 });
+      await assert.rejects(api.getMe(), new RegExp(code));
+    }
+    assert.deepEqual(events.map(event => event[0]), ['password-change-required', 'session-ended', 'session-ended']);
+    globalThis.fetch = async () => Response.json({ error: { code: 'RATE_LIMITED' } }, { status: 429, headers: { 'Retry-After': '37' } });
+    await assert.rejects(api.getUsers(), error => error.retryAfter === 37);
+  } finally { globalThis.fetch = previous; globalThis.window = previousWindow; }
+});
+
+test('account mutations send only contract fields and leave password bytes unchanged', async () => {
+  const previous = globalThis.fetch;
+  const requests = [];
+  globalThis.fetch = async (url, options) => {
+    requests.push([url, options.method, JSON.parse(options.body)]);
+    assert.equal(options.credentials, 'same-origin');
+    return Response.json({ data: { user: { id: 4 } } });
+  };
+  try {
+    await api.createUser({ phone: '87000000004', full_name: ' Name ', department: ' Team ', position: ' Tester ', role: 'admin', password: 'ignored' });
+    await api.updateUser(4, false);
+    await api.changePassword({ current_password: ' old ', new_password: ' new-password-123 ', repeat_password: 'ignored' });
+    assert.deepEqual(requests, [
+      ['/api/v1/admin/users', 'POST', { phone: '+77000000004', full_name: 'Name', department: 'Team', position: 'Tester' }],
+      ['/api/v1/admin/users/4', 'PATCH', { is_active: false }],
+      ['/api/v1/auth/change-password', 'POST', { current_password: ' old ', new_password: ' new-password-123 ' }],
+    ]);
+  } finally { globalThis.fetch = previous; }
+});
+
 test('phone normalization agrees with backend national and international formats', () => {
   for (const value of ['+7 (700) 000-00-01', '87000000001', '7000000001']) {
     assert.equal(api.normalizePhone(value), '+77000000001');

@@ -127,3 +127,6 @@ h2 { margin: 0; font-size: var(--brand-size); }
   .admin-ticket-table th, .admin-ticket-table td { display: block; width: auto !important; padding: 0; border: 0; }
   .admin-ticket-table td[data-label]::before { content: attr(data-label); display: block; margin-bottom: var(--space-xs); color: var(--color-muted); font-size: var(--small-size); }
 }
+
+.temporary-password { overflow-wrap: anywhere; font-family: monospace; margin-block: var(--space-sm); user-select: all; }
+#close-user-created { margin-top: var(--space-md); }

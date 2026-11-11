@@ -165,6 +165,7 @@
       <div class="content-block">
         <h1 id="admin-title" data-i18n="adminTitle">Панель администратора</h1>
         <p id="admin-name" class="employee-name"></p>
+        <a class="back-link" href="#/admin/users" data-i18n="employees"></a>
       </div>
       <section class="content-block" aria-labelledby="admin-queue-heading">
         <h2 id="admin-queue-heading" data-i18n="adminQueue">Обращения сотрудников</h2>
@@ -195,6 +196,44 @@
           <button id="admin-previous-page" class="secondary-button" type="button" data-i18n="previousPage">Предыдущая</button>
           <p id="admin-page-number"></p>
           <button id="admin-next-page" class="secondary-button" type="button" data-i18n="nextPage">Следующая</button>
+        </nav>
+      </section>
+    </section>
+    <section id="change-password-screen" class="login-panel" aria-labelledby="change-password-title" hidden>
+      <h1 id="change-password-title" data-i18n="changePassword"></h1>
+      <p class="hint" data-i18n="passwordChangeHint"></p>
+      <form id="change-password-form" novalidate><fieldset id="change-password-fields" class="ticket-fields">
+      <legend class="visually-hidden" data-i18n="changePassword"></legend>
+<div class="field"><label for="current-password" data-i18n="currentPassword"></label><input id="current-password" type="password" autocomplete="current-password" required aria-describedby="current-password-error"><p id="current-password-error" class="field-error" aria-live="polite" hidden></p></div><div class="field"><label for="new-password" data-i18n="newPassword"></label><input id="new-password" type="password" autocomplete="new-password" required aria-describedby="new-password-error"><p id="new-password-error" class="field-error" aria-live="polite" hidden></p></div><div class="field"><label for="repeat-password" data-i18n="repeatPassword"></label><input id="repeat-password" type="password" autocomplete="new-password" required aria-describedby="repeat-password-error"><p id="repeat-password-error" class="field-error" aria-live="polite" hidden></p></div>
+      <button class="primary-button" type="submit" data-i18n="changePassword"></button>
+      </fieldset></form><p id="change-password-status" class="status" role="status"></p>
+    </section>
+    <section id="users-screen" class="employee-panel" aria-labelledby="users-title" hidden>
+      <a class="back-link" href="#/admin" data-i18n="backToTickets"></a>
+      <div class="content-block"><h1 id="users-title" data-i18n="employees"></h1>
+        <form id="create-user-form" novalidate><fieldset id="create-user-fields" class="ticket-fields">
+        <legend data-i18n="createEmployee"></legend>
+<div class="field"><label for="user-full_name" data-i18n="fullName"></label><input id="user-full_name" type="text" autocomplete="off" required aria-describedby="user-full_name-error"><p id="user-full_name-error" class="field-error" aria-live="polite" hidden></p></div><div class="field"><label for="user-phone" data-i18n="phoneLabel"></label><input id="user-phone" type="tel" autocomplete="off" required aria-describedby="user-phone-error"><p id="user-phone-error" class="field-error" aria-live="polite" hidden></p></div><div class="field"><label for="user-department" data-i18n="department"></label><input id="user-department" type="text" autocomplete="off" required aria-describedby="user-department-error"><p id="user-department-error" class="field-error" aria-live="polite" hidden></p></div><div class="field"><label for="user-position" data-i18n="position"></label><input id="user-position" type="text" autocomplete="off" required aria-describedby="user-position-error"><p id="user-position-error" class="field-error" aria-live="polite" hidden></p></div>
+        <button class="primary-button" type="submit" data-i18n="createEmployee"></button>
+        </fieldset></form><p id="create-user-status" class="status" role="status"></p>
+      </div>
+      <section id="user-created" class="content-block" aria-labelledby="user-created-title" hidden>
+        <h2 id="user-created-title" data-i18n="employeeCreated"></h2>
+        <p id="created-user-phone"></p>
+        <p data-i18n="temporaryPassword"></p><p id="temporary-password" class="temporary-password"></p>
+        <p class="hint" data-i18n="temporaryPasswordHint"></p>
+        <button id="close-user-created" class="secondary-button" type="button" data-i18n="closeResult"></button>
+      </section>
+      <section class="content-block" aria-labelledby="users-list-title">
+        <h2 id="users-list-title" data-i18n="employees"></h2>
+        <p id="users-status" class="status" role="status"></p>
+        <p id="users-action-status" class="status" role="status"></p>
+        <button id="retry-users" class="secondary-button" type="button" data-i18n="retry" hidden></button>
+        <ul id="users-list" class="ticket-list"></ul>
+        <nav id="users-pagination" class="pagination" data-i18n-label="employees" hidden>
+          <button id="users-previous" class="secondary-button" type="button" data-i18n="previousPage"></button>
+          <p id="users-page"></p>
+          <button id="users-next" class="secondary-button" type="button" data-i18n="nextPage"></button>
         </nav>
       </section>
     </section>
