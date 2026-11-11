@@ -116,10 +116,43 @@ try {
   await page.locator('#attachments-list li').first().waitFor();
   const names = db.prepare('SELECT original_name FROM ticket_attachments ORDER BY id').all().map(row => row.original_name);
   assert.deepEqual(names, ['photo.png', 'document.pdf']);
+  const ticketURL = page.url();
+  async function savedPreview(role) {
+    await page.waitForFunction(() => {
+      const image = document.querySelector('#attachments-list .attachment-image-preview');
+      return image && image.complete && image.naturalWidth > 0;
+    });
+    assert.equal(await page.locator('#attachments-list .attachment-pdf').textContent(), 'PDF');
+    assert.equal(await page.locator('#attachments-list iframe, #attachments-list embed').count(), 0);
+    for (const [name, bytes] of [['photo.png', png], ['document.pdf', pdf]]) {
+      const downloadReady = page.waitForEvent('download');
+      await page.locator('#attachments-list li').filter({ hasText: name }).locator('a').click();
+      const download = await downloadReady;
+      assert.deepEqual(await readFile(await download.path()), bytes);
+    }
+    for (const w of [320, 390, 768, 1280]) {
+      await page.setViewportSize({ width: w, height: 900 });
+      assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
+    }
+    await page.locator('[data-language="kk"]').click();
+    assert.equal(await page.locator('#attachments-list .attachment-image-preview').count(), 1);
+    await shot(`saved-preview-${role}`);
+    await page.locator('[data-language="ru"]').click();
+  }
+  await savedPreview('employee');
+  await page.locator('#logout').click();
+  await page.waitForURL('**/#/login');
+  assert.equal(await activeURLs(), 0);
+  await login('+77000000003');
+  await page.goto(ticketURL.replace('/#/tickets/', '/#/admin/tickets/'));
+  await savedPreview('admin');
+  await page.reload();
+  await page.waitForFunction(() => document.querySelector('#attachments-list img')?.naturalWidth > 0);
+  results.push({ result: 'PASS', checks: ['saved PNG decoded for employee and administrator', 'PDF card and protected downloads match original bytes for both roles', 'saved previews survive RU/KK and reload', '320/390/768/1280 no overflow', 'logout revokes saved preview URLs'] });
   assert.deepEqual(errors, []);
   results.push({ result: 'PASS', checks: ['JPG/JPEG/PNG/WebP thumbnails decoded', 'PDF icon/name/size', 'RU/KK', '320/390/1280 layout', 'no upload before submit', 'keyboard delete preserves remaining files', 'append selection and quota', 'clear and leave revoke URLs', 'only remaining two files uploaded', 'success clears previews and URLs'] });
 } catch (error) {
-  results.push({ step: 'failure', error: error.message });
+  results.push({ step: 'failure', error: error.stack });
   process.exitCode = 1;
 } finally {
   await writeFile(resolve(output, `preview-results.json`), JSON.stringify({ results, traffic, errors }, null, 2));

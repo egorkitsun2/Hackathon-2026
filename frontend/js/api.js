@@ -4,10 +4,11 @@ export function invalidateSessionRequests() { sessionEpoch++; }
 
 export async function request(path, options = {}) {
   const epoch = sessionEpoch;
+  const { responseType, ...fetchOptions } = options;
   let response;
   try {
     response = await fetch(`/api/v1${path}`, {
-      ...options,
+      ...fetchOptions,
       credentials: 'same-origin',
       headers: { ...(options.body && !(options.body instanceof FormData) ? { 'Content-Type': 'application/json' } : {}), ...options.headers },
       cache: 'no-store',
@@ -17,6 +18,12 @@ export async function request(path, options = {}) {
     throw new Error('NETWORK_ERROR');
   }
   if (response.status === 204) return null;
+  if (response.ok && responseType === 'image') {
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(response.headers.get('Content-Type')?.split(';')[0].trim())) {
+      throw new Error('UNSUPPORTED_FILE_TYPE');
+    }
+    try { return await response.blob(); } catch { throw new Error('API_UNAVAILABLE'); }
+  }
   let result;
   try { result = await response.json(); } catch { throw new Error('API_UNAVAILABLE'); }
   if (!response.ok) {
@@ -54,6 +61,10 @@ export const updateUser = (id, is_active) => request(`/admin/users/${id}`, {
 
 export const resetUserPassword = (id, signal) => request(`/admin/users/${id}/reset-password`, {
   method: 'POST', body: JSON.stringify({}), signal,
+});
+
+export const getAttachmentPreview = (ticketId, attachmentId, signal) => request(`/tickets/${ticketId}/attachments/${attachmentId}`, {
+  signal, responseType: 'image',
 });
 
 export function normalizePhone(value) {

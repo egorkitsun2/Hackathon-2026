@@ -1,5 +1,5 @@
-import { getAdminTickets, getAdminStats } from './api.js?v=saas-redesign-20261111-1';
-import { t } from './i18n.js?v=saas-redesign-20261111-1';
+import { getAdminTickets, getAdminStats } from './api.js?v=saved-previews-20261112-1';
+import { t } from './i18n.js?v=saved-previews-20261112-1';
 
 const screen = document.querySelector('#admin-screen');
 const filter = document.querySelector('#admin-status-filter');

@@ -17,6 +17,7 @@ const ticket = {
 
 function harness(getTicket = async () => ({ data: ticket }), updateTicketStatus = async () => ({})) {
   const elements = new Map();
+  const urls = { created: [], revoked: [] };
   const element = () => ({
     textContent: '', value: '', children: [], events: {}, attributes: {}, dataset: {},
     focus() { this.focused = true; },
@@ -27,9 +28,9 @@ function harness(getTicket = async () => ({ data: ticket }), updateTicketStatus 
   });
   const get = selector => { if (!elements.has(selector)) elements.set(selector, element()); return elements.get(selector); };
   const document = { querySelector: get, createElement: element, documentElement: { lang: 'ru' } };
-  const context = vm.createContext({ document, getTicket, updateTicketStatus, TextEncoder, AbortController, uploadAttachment: async () => ({}), Intl, t: key => `${document.documentElement.lang}:${key}` });
+  const context = vm.createContext({ document, getTicket, updateTicketStatus, getAttachmentPreview: async () => ({}), URL: { createObjectURL() { const url = `blob:test-${urls.created.length}`; urls.created.push(url); return url; }, revokeObjectURL(url) { urls.revoked.push(url); } }, TextEncoder, AbortController, uploadAttachment: async () => ({}), Intl, t: key => `${document.documentElement.lang}:${key}` });
   vm.runInContext(source, context);
-  return { context, get, document };
+  return { context, get, document, urls };
 }
 
 test('details render safe text, chronological history, and final matching event comment', async () => {
@@ -277,4 +278,51 @@ test('cancel refreshes details; navigation aborts and discards late upload respo
   const second = submit(); h.context.closeTicketDetails(); await second;
   assert.equal(reads, 2); assert.equal(h.get('#attachments-list').children.length, 0);
   assert.equal(h.get('#attachment-status').textContent, '');
+});
+
+
+test('saved image previews work for employee/admin, reuse URLs across translation and clear on leave', async () => {
+  for (const admin of [false,true]) {
+    const files = [
+      { id:7,original_name:'<photo>.png',mime_type:'image/png',size_bytes:100 },
+      { id:8,original_name:'file.pdf',mime_type:'application/pdf',size_bytes:50 },
+    ];
+    let calls=0;
+    const h=harness(async()=>({data:{...ticket,attachments:files}}));
+    h.context.getAttachmentPreview=async(id,fileId)=>{calls++;assert.equal(id,124);assert.equal(fileId,7);return {};};
+    h.context.openTicketDetails('124',admin);await flush();
+    const rows=h.get('#attachments-list').children;
+    assert.equal(rows[0].children[0].textContent,'<photo>.png');
+    assert.equal(rows[0].children[3].children[0].src,'blob:test-0');
+    assert.equal(rows[1].children[3].textContent,'PDF');assert.equal(calls,1);
+    h.document.documentElement.lang='kk';h.context.renderTicketDetails();
+    assert.equal(calls,1);assert.equal(h.urls.created.length,1);
+    h.context.closeTicketDetails();assert.deepEqual(h.urls.revoked,['blob:test-0']);
+    assert.equal(h.get('#attachments-list').children.length,0);
+  }
+});
+
+test('leaving aborts preview read and ignores late blobs without creating an object URL', async () => {
+  let finish,signal;
+  const h=harness(async()=>({data:{...ticket,attachments:[{id:7,original_name:'a.jpg',mime_type:'image/jpeg',size_bytes:10}]}}));
+  h.context.getAttachmentPreview=(id,fileId,value)=>{signal=value;return new Promise(resolve=>{finish=resolve;});};
+  h.context.openTicketDetails('124');await flush();h.context.closeTicketDetails();
+  assert.equal(signal.aborted,true);finish({});await flush();
+  assert.equal(h.urls.created.length,0);assert.equal(h.get('#attachments-list').children.length,0);
+});
+
+test('preview failure retains download; explicit retry works and decode failure revokes URL', async () => {
+  let calls=0;
+  const h=harness(async()=>({data:{...ticket,attachments:[{id:7,original_name:'a.webp',mime_type:'image/webp',size_bytes:10}]}}));
+  h.context.getAttachmentPreview=async()=>{if(++calls===1)throw new Error('NETWORK_ERROR');return {};};
+  h.context.openTicketDetails('124');await flush();
+  let row=h.get('#attachments-list').children[0];
+  assert.equal(row.children[2].href,'/api/v1/tickets/124/attachments/7');
+  const container=row.children[3];assert.match(container.children[0].textContent,/attachmentPreviewUnavailable/);
+  container.children[1].events.click();await flush();
+  assert.equal(calls,2);assert.equal(container.children[0].src,'blob:test-0');
+  container.children[0].events.error();
+  assert.deepEqual(h.urls.revoked,['blob:test-0']);
+  assert.match(container.children[0].textContent,/attachmentPreviewUnavailable/);
+  h.context.closeTicketDetails();assert.equal(h.urls.revoked.length,1);
 });

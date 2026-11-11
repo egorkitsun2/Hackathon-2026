@@ -217,3 +217,21 @@ test('old authorization errors cannot invalidate a newer session epoch', async (
     await assert.rejects(api.getMe(), /UNAUTHORIZED/); assert.equal(events, 1);
   } finally { globalThis.fetch = previous; globalThis.window = previousWindow; }
 });
+
+
+test('preview reads protected image blobs with same-origin credentials and rejects document content', async () => {
+  const previous=globalThis.fetch;
+  try {
+    globalThis.fetch=async(url,options)=>{
+      assert.equal(url,'/api/v1/tickets/124/attachments/7');
+      assert.equal(options.credentials,'same-origin');assert.equal(options.cache,'no-store');
+      assert.equal(options.responseType,undefined);
+      return new Response('image bytes',{headers:{'Content-Type':'image/png'}});
+    };
+    assert.equal(await (await api.getAttachmentPreview(124,7)).text(),'image bytes');
+    globalThis.fetch=async()=>new Response('%PDF-1.4',{headers:{'Content-Type':'application/pdf'}});
+    await assert.rejects(api.getAttachmentPreview(124,7),/UNSUPPORTED_FILE_TYPE/);
+    globalThis.fetch=async()=>Response.json({error:{code:'NOT_FOUND'}},{status:404});
+    await assert.rejects(api.getAttachmentPreview(124,7),/NOT_FOUND/);
+  }finally{globalThis.fetch=previous;}
+});
