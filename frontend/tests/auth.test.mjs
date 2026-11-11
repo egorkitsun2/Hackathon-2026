@@ -38,11 +38,11 @@ function harness({ restoredUser = null, loginError = null, hash = '#/employee', 
     getMe: async () => { if (!restoredUser) throw new Error('UNAUTHORIZED'); return { data: { user: restoredUser }, meta: { passwordChangeRequired: required } }; },
     logout: async () => null, invalidateSessionRequests() {},
     openEmployee: profile => opened.push(profile), closeEmployee() {}, renderEmployee() {},
-    openNewTicket() {}, resetNewTicket() {}, renderNewTicket() {},
+    openNewTicket() {}, closeNewTicket() {}, resetNewTicket() {}, renderNewTicket() {},
     openTicketDetails: id => detailsOpened.push(id), closeTicketDetails() {}, renderTicketDetails() {},
     openAdminQueue: user => adminsOpened.push(user), closeAdminQueue() {}, renderAdminQueue() {},
     openAccounts() {}, closeAccounts() {}, renderAccounts() {},
-    setLanguage() {}, t: key => key,
+    initTheme() {}, renderThemeToggle() {}, setLanguage() {}, t: key => key,
   });
   vm.runInContext(source, context);
   return { get: selector => document.querySelector(selector), location, opened, detailsOpened, adminsOpened, handlers, clock };

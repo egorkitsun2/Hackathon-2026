@@ -1,10 +1,11 @@
-import { openAccounts, closeAccounts, renderAccounts } from './accounts.js?v=audit-fixes-20261111-1';
-import { login, logout, getMe, normalizePhone, invalidateSessionRequests } from './api.js?v=audit-fixes-20261111-1';
-import { setLanguage, t } from './i18n.js?v=audit-fixes-20261111-1';
-import { openEmployee, closeEmployee, renderEmployee } from './employee.js?v=audit-fixes-20261111-1';
-import { openNewTicket, resetNewTicket, renderNewTicket } from './new-ticket.js?v=audit-fixes-20261111-1';
-import { openTicketDetails, closeTicketDetails, renderTicketDetails } from './ticket.js?v=audit-fixes-20261111-1';
-import { openAdminQueue, closeAdminQueue, renderAdminQueue } from './admin.js?v=audit-fixes-20261111-1';
+import { openAccounts, closeAccounts, renderAccounts } from './accounts.js?v=writing-help-20261111-1';
+import { initTheme, renderThemeToggle } from './theme.js?v=writing-help-20261111-1';
+import { login, logout, getMe, normalizePhone, invalidateSessionRequests } from './api.js?v=writing-help-20261111-1';
+import { setLanguage, t } from './i18n.js?v=writing-help-20261111-1';
+import { openEmployee, closeEmployee, renderEmployee } from './employee.js?v=writing-help-20261111-1';
+import { openNewTicket, closeNewTicket, resetNewTicket, renderNewTicket } from './new-ticket.js?v=writing-help-20261111-1';
+import { openTicketDetails, closeTicketDetails, renderTicketDetails } from './ticket.js?v=writing-help-20261111-1';
+import { openAdminQueue, closeAdminQueue, renderAdminQueue } from './admin.js?v=writing-help-20261111-1';
 
 const form = document.querySelector('#login-form');
 const phone = document.querySelector('#phone');
@@ -79,6 +80,7 @@ document.querySelectorAll('[data-language]').forEach((button) => {
     renderAdminQueue();
     renderAccounts();
     renderLoginCooldown();
+    renderThemeToggle();
   });
 });
 
@@ -165,6 +167,7 @@ function route() {
   const admin = !changing && user?.role === 'admin';
   const managing = admin && location.hash === '#/admin/users';
   const creating = employee && location.hash === '#/new-ticket';
+  if (!creating) closeNewTicket();
   const detailMatch = employee ? location.hash.match(/^#\/tickets\/(\d+)$/) : admin ? location.hash.match(/^#\/admin\/tickets\/(\d+)$/) : null;
   const viewing = Boolean(detailMatch);
   const target = changing ? '#/change-password' : managing ? '#/admin/users' : employee ? (creating ? '#/new-ticket' : viewing ? location.hash : '#/employee') : admin ? (viewing ? location.hash : '#/admin') : '#/login';
@@ -256,6 +259,7 @@ async function restoreSession() {
 window.addEventListener('hashchange', route);
 window.addEventListener('session-refresh-requested', restoreSession);
 setLanguage('ru');
+initTheme();
 renderPasswordToggle();
 route();
 restoreSession();

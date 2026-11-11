@@ -1,0 +1,118 @@
+{
+  "results": [
+    {
+      "result": "PASS",
+      "checks": [
+        "System dark applied before app module executes (no light bootstrap frame)",
+        "Keyboard toggle, localStorage/reload and explicit light overrides system dark",
+        "Hover/focus/disabled/loading readable; toggle preserves pending login",
+        "RU/KK, forms/files/counters preserved; errors/previews and 320/390/1280 layout",
+        "Theme survives SPA/role navigation; employee list/admin table/stats and modal use palette",
+        "Mandatory first-password screen uses theme and preserves password draft"
+      ],
+      "contrast": [
+        {
+          "name": "--color-text",
+          "ratio": 11.195603099623863
+        },
+        {
+          "name": "--color-muted",
+          "ratio": 7.1936152288775945
+        },
+        {
+          "name": "--color-error",
+          "ratio": 6.707130874857855
+        },
+        {
+          "name": "--color-status-new",
+          "ratio": 6.719297429625681
+        },
+        {
+          "name": "--color-status-review",
+          "ratio": 8.644773417752502
+        },
+        {
+          "name": "--color-status-resolved",
+          "ratio": 7.840447577148428
+        },
+        {
+          "name": "--color-status-rejected",
+          "ratio": 6.678375307046771
+        }
+      ]
+    }
+  ],
+  "traffic": [
+    {
+      "method": "GET",
+      "path": "/api/v1/auth/me",
+      "status": 401
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/auth/me",
+      "status": 401
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/auth/me",
+      "status": 401
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/auth/login",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/tickets",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/tickets",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/tickets/4",
+      "status": 200
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/auth/logout",
+      "status": 204
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/auth/login",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/stats",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/tickets",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/admin/users",
+      "status": 200
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/auth/logout",
+      "status": 204
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/auth/login",
+      "status": 200
+    }
+  ],
+  "errors": []
+}

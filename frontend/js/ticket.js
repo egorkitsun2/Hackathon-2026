@@ -1,6 +1,6 @@
-import { validateAttachment } from './attachment-validation.js?v=audit-fixes-20261111-1';
-import { getTicket, updateTicketStatus, uploadAttachment } from './api.js?v=audit-fixes-20261111-1';
-import { t } from './i18n.js?v=audit-fixes-20261111-1';
+import { validateAttachment } from './attachment-validation.js?v=writing-help-20261111-1';
+import { getTicket, updateTicketStatus, uploadAttachment } from './api.js?v=writing-help-20261111-1';
+import { t } from './i18n.js?v=writing-help-20261111-1';
 
 const screen = document.querySelector('#ticket-detail-screen');
 const content = document.querySelector('#ticket-detail-content');

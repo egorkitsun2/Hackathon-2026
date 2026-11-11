@@ -1,0 +1,72 @@
+{
+  "results": [
+    {
+      "result": "PASS",
+      "checks": [
+        "JPG/JPEG/PNG/WebP thumbnails decoded",
+        "PDF icon/name/size",
+        "RU/KK",
+        "320/390/1280 layout",
+        "no upload before submit",
+        "keyboard delete preserves remaining files",
+        "append selection and quota",
+        "clear and leave revoke URLs",
+        "only remaining two files uploaded",
+        "success clears previews and URLs"
+      ]
+    }
+  ],
+  "traffic": [
+    {
+      "method": "GET",
+      "path": "/api/v1/auth/me",
+      "status": 401
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/auth/login",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/tickets",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/tickets",
+      "status": 200
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/tickets",
+      "status": 201
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/tickets/1/attachments",
+      "status": 201
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/tickets/1",
+      "status": 200
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/tickets/1/attachments",
+      "status": 201
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/tickets/1",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/tickets/1",
+      "status": 200
+    }
+  ],
+  "errors": []
+}

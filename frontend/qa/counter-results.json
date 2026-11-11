@@ -1,0 +1,46 @@
+{
+  "results": [
+    {
+      "width": 1280,
+      "result": "PASS",
+      "checks": [
+        "Unicode code points and trimming",
+        "exact limits",
+        "over-limit styling",
+        "RU/KK preserves values",
+        "clear resets count",
+        "no horizontal overflow"
+      ]
+    },
+    {
+      "width": 390,
+      "result": "PASS",
+      "checks": [
+        "Unicode code points and trimming",
+        "exact limits",
+        "over-limit styling",
+        "RU/KK preserves values",
+        "clear resets count",
+        "no horizontal overflow"
+      ]
+    }
+  ],
+  "traffic": [
+    {
+      "method": "GET",
+      "path": "/api/v1/auth/me",
+      "status": 401
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/auth/login",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/tickets",
+      "status": 200
+    }
+  ],
+  "errors": []
+}

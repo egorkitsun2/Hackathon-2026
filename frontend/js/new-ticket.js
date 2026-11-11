@@ -1,6 +1,6 @@
-import { createTicket, uploadAttachment, getTicket } from './api.js?v=audit-fixes-20261111-1';
-import { validateAttachment } from './attachment-validation.js?v=audit-fixes-20261111-1';
-import { t } from './i18n.js?v=audit-fixes-20261111-1';
+import { createTicket, uploadAttachment, getTicket } from './api.js?v=writing-help-20261111-1';
+import { validateAttachment } from './attachment-validation.js?v=writing-help-20261111-1';
+import { t } from './i18n.js?v=writing-help-20261111-1';
 
 const form = document.querySelector('#new-ticket-form');
 const fields = document.querySelector('#ticket-fields');
@@ -21,18 +21,117 @@ let uploaded = 0;
 let selectedCount = 0;
 let uploadErrorKey = '';
 let uploadDiagnostic = '';
+let attachments = [];
+let previewOpen = false;
+let previewRevision = 0;
+let renderedPreviewKey = '';
+const previewList = document.querySelector('#ticket-previews');
+let writingHelpKey = '';
+const writingPrompts = {
+  problem: ['helpWhatHappened', 'helpWhereWhen', 'helpWorkImpact', 'helpSolution'],
+  suggestion: ['helpSuggestionChange', 'helpSuggestionBenefit', 'helpSuggestionResult'],
+  complaint: ['helpComplaintAbout', 'helpComplaintWhereWhen', 'helpComplaintImpact', 'helpComplaintOutcome'],
+  gratitude: ['helpGratitudeWho', 'helpGratitudeAction', 'helpGratitudeImpact'],
+};
+
+function renderWritingHelp() {
+  const key = `${inputs.type.value}:${t('writingHelpTitle')}`;
+  if (key === writingHelpKey) return;
+  writingHelpKey = key;
+  const prompts = writingPrompts[inputs.type.value] ?? [];
+  const list = document.querySelector('#ticket-help-prompts');
+  list.replaceChildren();
+  for (const prompt of prompts) {
+    const item = document.createElement('li'); item.textContent = t(prompt); list.append(item);
+  }
+  list.hidden = !prompts.length;
+  document.querySelector('#ticket-help-choose').hidden = Boolean(prompts.length);
+}
+
+function releasePreviewURLs() {
+  for (const entry of attachments) {
+    if (entry.url) URL.revokeObjectURL(entry.url);
+    entry.url = null;
+  }
+}
+
+function clearAttachments() {
+  releasePreviewURLs(); attachments = []; previewRevision++;
+  filesInput.value = '';
+}
+
+function previewText(tag, text, className = '') {
+  const element = document.createElement(tag);
+  element.textContent = text; element.className = className;
+  return element;
+}
+
+function renderPreviews() {
+  const key = `${previewRevision}:${t('removeSelectedFile')}:${pending}:${Boolean(created)}:${previewOpen}`;
+  if (key === renderedPreviewKey) return;
+  renderedPreviewKey = key;
+  previewList.replaceChildren();
+  previewList.hidden = !previewOpen || Boolean(created) || !attachments.length;
+  document.querySelector('#clear-ticket-files').disabled = pending || Boolean(created) || !attachments.length;
+  if (!previewOpen || created) { releasePreviewURLs(); return; }
+  for (const entry of attachments) {
+    const { file } = entry;
+    const card = document.createElement('li'); card.className = 'attachment-preview';
+    if (/\.(jpe?g|png|webp)$/i.test(file.name) && !entry.failed) {
+      try { entry.url ??= URL.createObjectURL(file); } catch { entry.failed = true; }
+      if (entry.url) {
+        const image = document.createElement('img');
+        const source = entry.url;
+        image.className = 'attachment-thumbnail'; image.alt = ''; image.src = source;
+        image.addEventListener('error', () => {
+          if (!attachments.includes(entry) || entry.url !== source) return;
+          URL.revokeObjectURL(entry.url); entry.url = null; entry.failed = true;
+          previewRevision++; renderPreviews();
+        });
+        card.append(image);
+      }
+    }
+    if (/\.pdf$/i.test(file.name)) {
+      const icon = previewText('span', 'PDF', 'attachment-pdf');
+      icon.setAttribute('aria-hidden', 'true'); card.append(icon);
+    } else if (entry.failed) card.append(previewText('p', t('attachmentPreviewUnavailable'), 'hint'));
+    const info = document.createElement('div'); info.className = 'attachment-preview-info';
+    info.append(previewText('p', file.name), previewText('p', `${file.size} ${t('attachmentBytes')}`, 'hint'));
+    const remove = previewText('button', t('removeSelectedFile'), 'secondary-button');
+    remove.type = 'button'; remove.disabled = pending;
+    remove.setAttribute('aria-label', `${t('removeSelectedFile')}: ${file.name}`);
+    remove.addEventListener('click', () => {
+      if (pending || created) return;
+      if (entry.url) URL.revokeObjectURL(entry.url);
+      attachments = attachments.filter(item => item !== entry);
+      previewRevision++; filesError = ''; renderNewTicket(); filesInput.focus();
+    });
+    card.append(info, remove); previewList.append(card);
+  }
+}
+
+export const ticketTextLength = value => Array.from(value.trim()).length;
 
 export function validateTicket(values) {
   const errors = {};
   if (!['problem', 'suggestion', 'complaint', 'gratitude'].includes(values.type)) errors.type = 'typeRequired';
   for (const [name, min, max] of [['title', 5, 120], ['description', 10, 4000]]) {
-    const length = Array.from(values[name].trim()).length;
+    const length = ticketTextLength(values[name]);
     if (length < min || length > max) errors[name] = name === 'title' ? 'titleLengthError' : 'descriptionLengthError';
   }
   return errors;
 }
 
 export function renderNewTicket() {
+  renderWritingHelp();
+  renderPreviews();
+  for (const [name, maximum] of [['title', 120], ['description', 4000]]) {
+    const length = ticketTextLength(inputs[name].value);
+    const counter = document.querySelector(`#ticket-${name}-counter`);
+    counter.textContent = `${length} / ${maximum}`;
+    counter.dataset.exceeded = String(length > maximum);
+    counter.setAttribute('aria-label', `${t('characterCount')}: ${length} / ${maximum}${length > maximum ? `. ${t('characterLimitExceeded')}` : ''}`);
+  }
   document.querySelector('#ticket-files-error').textContent = filesError ? t(filesError) : '';
   document.querySelector('#ticket-files-error').hidden = !filesError;
   filesInput.setAttribute('aria-invalid', String(Boolean(filesError)));
@@ -57,6 +156,8 @@ export function renderNewTicket() {
 }
 
 export function resetNewTicket() {
+  document.querySelector('#ticket-writing-help').open = false;
+  clearAttachments();
   version++;
   uploadController?.abort();
   uploadController = null;
@@ -76,17 +177,26 @@ export function resetNewTicket() {
 }
 
 export function openNewTicket() {
+  previewOpen = true;
   if (created && !pending) resetNewTicket();
   renderNewTicket();
 }
 
+export function closeNewTicket() {
+  previewOpen = false;
+  releasePreviewURLs(); renderedPreviewKey = '';
+  previewList.replaceChildren(); previewList.hidden = true;
+}
+
 for (const [name, input] of Object.entries(inputs)) {
-  input.addEventListener('input', () => {
+  const onInput = () => {
     delete errors[name];
     // Keep an uncertain submission warning visible until the user checks the list.
     if (statusKey !== 'submissionUncertain') statusKey = '';
     renderNewTicket();
-  });
+  };
+  input.addEventListener('input', onInput);
+  if (name === 'type') input.addEventListener('change', onInput);
 }
 
 form.addEventListener('submit', async event => {
@@ -94,8 +204,8 @@ form.addEventListener('submit', async event => {
   if (pending || created) return;
   const values = Object.fromEntries(Object.entries(inputs).map(([name, input]) => [name, input.value]));
   errors = validateTicket(values);
-  const files = Array.from(filesInput.files ?? []);
-  filesError = files.length > 3 ? 'newTicketFilesLimit' : files.map(validateAttachment).find(Boolean) || '';
+  const files = attachments.map(entry => entry.file);
+  filesError = filesError || (files.length > 3 ? 'newTicketFilesLimit' : files.map(validateAttachment).find(Boolean) || '');
   statusKey = '';
   renderNewTicket();
   const firstInvalid = Object.keys(inputs).find(name => errors[name]);
@@ -123,11 +233,13 @@ form.addEventListener('submit', async event => {
       renderNewTicket();
     }
     statusKey = 'newTicketFilesSaved';
+    clearAttachments();
     form.reset();
     filesInput.value = '';
   } catch (error) {
     if (version !== currentVersion) return;
     if (created) {
+      clearAttachments();
       statusKey = 'newTicketFilesPartial';
       // Report only machine codes, never raw exception/server text or file paths.
       const code = /^[A-Z][A-Z_]{1,63}$/.test(error.message) ? error.message : 'CLIENT_ERROR';
@@ -167,8 +279,19 @@ form.addEventListener('submit', async event => {
   }
 });
 
-filesInput.addEventListener('change', () => { filesError = ''; renderNewTicket(); });
+filesInput.addEventListener('change', () => {
+  if (pending || created) return;
+  const files = Array.from(filesInput.files ?? []);
+  filesInput.value = '';
+  if (!files.length) return;
+  filesError = attachments.length + files.length > 3 ? 'newTicketFilesLimit' : files.map(validateAttachment).find(Boolean) || '';
+  if (!filesError) {
+    attachments.push(...files.map(file => ({ file, url: null, failed: false })));
+    previewRevision++;
+  }
+  renderNewTicket();
+});
 document.querySelector('#clear-ticket-files').addEventListener('click', () => {
   if (pending) return;
-  filesInput.value = ''; filesError = ''; renderNewTicket();
+  clearAttachments(); filesError = ''; renderNewTicket();
 });
