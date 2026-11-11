@@ -7,6 +7,9 @@ Workers subscription or cloud resources are required.
 
 ## Local launch (PowerShell)
 
+For one-command Windows launch and Cloudflare Quick Tunnel, see
+[Windows launchers](../docs/windows-launchers.md). These launchers never seed or bootstrap accounts.
+
 Use Node.js **24.13+** (tested on 26.13.0) and npm. SQLite uses the built-in
 `node:sqlite` driver; Argon2 uses the `argon2` native package and its prebuilt
 binaries. On platforms without a compatible prebuilt binary, npm may need a
