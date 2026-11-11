@@ -1,9 +1,11 @@
-# Team Voice — API contract v0.3
+# Team Voice — API contract v0.4
 
-Status: MVP v0.3 stage 1 on Node.js + Hono and SQLite.
-The nine v0.2 routes retain their response JSON contracts; account lifecycle routes are additive.
+Status: MVP v0.4 attachments on Node.js + Hono and SQLite.
+Existing routes retain their fields; ticket details additionally return attachments.
+Account lifecycle and admin statistics routes remain unchanged.
 
-Base path: /api/v1. Request and response bodies are JSON. Dates are UTC ISO 8601
+Base path: /api/v1. Request and response bodies are JSON except multipart attachment
+uploads and binary downloads documented below. Dates are UTC ISO 8601
 strings. User sessions are sent using same-origin HttpOnly cookies. UI labels
 are translated on the frontend (RU/KZ); API enums are language-neutral.
 
@@ -25,6 +27,8 @@ are translated on the frontend (RU/KZ); API enums are language-neutral.
 | GET | /tickets | Employee | 200 |
 | POST | /tickets | Employee | 201 |
 | GET | /tickets/:id | Author or admin | 200 |
+| POST | /tickets/:id/attachments | Ticket author, status new | 201 |
+| GET | /tickets/:id/attachments/:attachmentId | Author or admin | 200 (binary) |
 | GET | /admin/tickets | Admin | 200 |
 | PATCH | /admin/tickets/:id | Admin | 200 |
 | POST | /admin/users | Admin | 201 |
@@ -197,7 +201,8 @@ GET /tickets/:id response for an ADMIN:
         "comment": "Оборудование передано на ремонт.",
         "created_at": "2026-11-10T11:00:00.000Z"
       }
-    ]
+    ],
+    "attachments": []
   }
 }
 ~~~
@@ -278,12 +283,14 @@ All errors use this envelope:
 
 | HTTP | code |
 |---|---|
-| 400 | VALIDATION_ERROR |
+| 400 | VALIDATION_ERROR or UPLOAD_ABORTED |
 | 401 | INVALID_CREDENTIALS or UNAUTHORIZED |
 | 403 | FORBIDDEN, ACCOUNT_DISABLED, INVALID_ORIGIN or PASSWORD_CHANGE_REQUIRED |
 | 404 | NOT_FOUND |
-| 409 | INVALID_TRANSITION, PHONE_EXISTS or PASSWORD_CHANGED |
-| 415 | UNSUPPORTED_MEDIA_TYPE |
+| 408 | UPLOAD_TIMEOUT |
+| 409 | INVALID_TRANSITION, PHONE_EXISTS, PASSWORD_CHANGED, ATTACHMENTS_LOCKED or ATTACHMENT_LIMIT_REACHED |
+| 413 | FILE_TOO_LARGE or UPLOAD_TOO_LARGE |
+| 415 | UNSUPPORTED_MEDIA_TYPE or UNSUPPORTED_FILE_TYPE |
 | 429 | RATE_LIMITED |
 | 500 | INTERNAL_ERROR |
 | 503 | SERVICE_UNAVAILABLE |
@@ -487,8 +494,8 @@ accounts remain compatible with v0.2; seed is not the bootstrap command.
 All three /admin/users routes require a current active administrator session.
 Anonymous requests return 401; employees return 403 FORBIDDEN. All new mutation
 routes retain the existing exact Origin check, JSON media type, 32 KiB body
-limit, strict validation and generic error envelopes. No registration,
-invitations or attachments were added.
+limit, strict validation and generic error envelopes. Account lifecycle adds no
+public registration or invitations. Attachments are specified separately below.
 
 ## Admin dashboard statistics (additive v0.3 endpoint)
 
@@ -522,3 +529,138 @@ Anonymous/expired sessions return 401 UNAUTHORIZED; employee sessions return
 requiring password change returns 403 PASSWORD_CHANGE_REQUIRED. Role and account
 state are checked on each request using the existing auth middleware. Existing
 endpoints and JSON contracts are unchanged; no schema migration is needed.
+
+## v0.4: private ticket attachments
+
+### Upload one file
+
+POST /api/v1/tickets/:id/attachments uses **multipart/form-data** with exactly
+one file part named `file`. Other parts/fields are rejected. Send each attachment
+in a separate request. The browser must set the multipart Content-Type/boundary;
+do not set application/json or a manual boundary when passing FormData.
+Same-origin cookie authentication and the exact trusted Origin remain required.
+
+Only the ticket author may upload, and only while status is new. An administrator
+who is not the author cannot upload. Employees requesting another employee's
+ticket receive 404; an admin uploading to someone else's ticket gets 403 FORBIDDEN.
+The session, author, status and remaining quota are checked before reading and
+again under a write transaction after streaming. A status change to in_review
+while an upload is pending prevents its commit (409 ATTACHMENTS_LOCKED).
+
+Limits:
+
+- At most **3 committed attachments per ticket**, across all upload requests.
+- File size **1 to 5,242,880 bytes inclusive** (5 MiB).
+- Whole multipart body at most **5,308,416 bytes** (file limit plus 64 KiB).
+- Extensions .jpg/.jpeg, .png, .webp, .pdf (case-insensitive).
+- Declared part MIME must match the extension's canonical MIME, or be
+  application/octet-stream; actual detected content must match too.
+- Original filename: at most 180 Unicode characters and 255 UTF-8 bytes;
+  no slash, backslash, colon, ASCII control characters, NUL or traversal names.
+- The server streams bytes to disk with backpressure; it never calls formData(),
+  arrayBuffer() or buffers an unbounded request. Byte limits are enforced even
+  without Content-Length. Non-upload JSON requests retain their **32 KiB** limit.
+- Maximum four active uploads per application process; overload gives 503.
+  A receive deadline of 120 seconds returns 408 UPLOAD_TIMEOUT.
+
+201 response:
+
+```json
+{
+  "data": {
+    "id": 7,
+    "original_name": "photo.jpg",
+    "mime_type": "image/jpeg",
+    "size_bytes": 123456,
+    "created_at": "2026-11-11T10:00:00.000Z",
+    "url": "/api/v1/tickets/124/attachments/7"
+  }
+}
+```
+
+These are **public attachment metadata fields**. No storage key, disk path,
+session token, or author phone is returned. All sizes are bytes, dates UTC.
+Names are display text only; frontend must render them as text, not HTML.
+
+No request is automatically retried/idempotent. If a connection is lost near
+commit, the upload may already exist. Refresh ticket details before proposing a
+manual retry; do not automatically send the same file again.
+
+### Ticket details
+
+GET /api/v1/tickets/:id now includes `data.attachments`, an array of the same
+metadata objects as above, ordered by attachment id ascending. Old tickets and
+tickets with no uploads return `attachments: []`. Existing ticket fields,
+author-only/admin access rules and history order stay unchanged. The author
+object is still omitted for employees and included only for admins. List,
+create and status-change response shapes do not gain attachment fields.
+
+### Protected binary download
+
+GET /api/v1/tickets/:id/attachments/:attachmentId requires a current session:
+only the author and administrators may read. The attachment must belong to that
+specific ticket; mismatched IDs, missing files or unauthorized employee access
+return 404 NOT_FOUND. Disabled accounts and mandatory-password-change sessions
+retain existing restrictions. Account/session access is rechecked after disk I/O.
+
+200 returns the binary file, streamed from private storage. Content-Type is
+image/jpeg, image/png, image/webp or application/pdf. Headers include:
+
+```http
+Content-Disposition: attachment; filename="attachment.jpg"; filename*=UTF-8''photo.jpg
+X-Content-Type-Options: nosniff
+Content-Security-Policy: sandbox; default-src 'none'
+Cache-Control: no-store
+```
+
+The relative metadata URL is protected, not a public or signed link. Use a normal
+same-origin download link or credentialed fetch. No inline PDF execution,
+thumbnails, conversion, Range/resume support or delete endpoint is added.
+
+### Upload errors and storage lifecycle
+
+All errors use the existing JSON envelope. 400 VALIDATION_ERROR covers bad
+multipart/filename, missing/empty file, unknown fields and multiple parts;
+400 UPLOAD_ABORTED covers a signalled interruption. Invalid outer media type
+returns 415 UNSUPPORTED_MEDIA_TYPE. A forbidden extension, declared MIME mismatch
+or detected content mismatch returns 415 UNSUPPORTED_FILE_TYPE. Oversized files
+return 413 FILE_TOO_LARGE; an oversized declared body or total byte stream returns
+413 UPLOAD_TOO_LARGE. If several limits are violated, the first detected error
+wins; the server does not continue reading to determine another error. Quota is
+409 ATTACHMENT_LIMIT_REACHED. Upload connections close after their response,
+including early Origin/auth failures, to avoid retaining unread arbitrary bodies.
+
+Migration 0004_ticket_attachments.sql adds only ticket_attachments and its index;
+existing accounts, tickets, events and sessions are preserved. File publication
+and metadata insertion are performed under the same write lock with cleanup
+on ordinary errors, including quota/status/session races and failed DB commits.
+If a COMMIT/storage error has an uncertain outcome, cleanup checks metadata before
+deleting a published file; an already committed reference is always preserved.
+A received file is first written under a random 256-bit key to private tmp/;
+publication reserves its final random name exclusively, then renames it into
+files/. Client filenames never form disk paths. Downloads reject non-regular
+files and storage keys that do not match the server's fixed key format.
+
+The server stores files under ATTACHMENTS_DIR; by default, append `.attachments`
+to the absolute SQLite filename (normally backend/data/team-voice.sqlite.attachments).
+Each database filename therefore has a separate default storage directory. This must
+be a dedicated private local directory outside every served frontend directory.
+Startup rejects overlapping canonical paths; tmp/ and files/ cannot be symlinks.
+Back up the database and this directory together while the application is stopped.
+Do not point a different/unrelated database at an existing attachment directory.
+
+Ordinary failed, interrupted and timed-out uploads close writers and remove
+uncommitted files. Cleanup errors are logged generically and retried by
+maintenance. On startup and at most every 15 minutes on subsequent upload work,
+files with server-generated names older than 24 hours and without metadata are
+removed; committed files and unrelated names are preserved. There is no global
+filesystem/SQLite crash transaction: a crash can leave a recent orphan until
+that cleanup. Operators remain responsible for private Windows ACLs, persistent
+disk space and backing up both stores. Deleting the directory loses attachments.
+
+Format verification uses allowed binary signatures and file-type detection.
+It is not deep document/image validation or antivirus: corrupted/polyglot files,
+malicious PDF content and decompression bombs are not guaranteed absent. The
+backend does not decode images, execute documents or serve them as frontend
+assets; downloads are marked attachment and nosniff. No malware scanning,
+external storage, attachment editing/deletion or other features are included.

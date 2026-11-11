@@ -11,10 +11,12 @@ if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error('Invali
 const origin = process.env.APP_ORIGIN ?? (production ? '' : `http://localhost:${port}`)
 if (!origin) throw new Error('APP_ORIGIN is required in production')
 const host = process.env.HOST ?? '127.0.0.1'
-const db = openDatabase(process.env.DATABASE_PATH ?? defaultDatabasePath)
+const databasePath = process.env.DATABASE_PATH ?? defaultDatabasePath
+const db = openDatabase(databasePath)
 try {
   migrate(db)
-  const app = await createApp({ db, origin, production })
+  const attachmentsDir = process.env.ATTACHMENTS_DIR ?? `${resolve(databasePath)}.attachments`
+  const app = await createApp({ db, origin, production, attachmentsDir, frontendDir: process.env.FRONTEND_DIR })
   // Optional existing frontend build; never serve the repository or private data directory.
   if (process.env.FRONTEND_DIR) {
     const root = resolve(process.env.FRONTEND_DIR)

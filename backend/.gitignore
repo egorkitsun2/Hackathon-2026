@@ -14,3 +14,6 @@ data/
 *.sqlite-*
 *.db
 *.db-*
+
+# Private file stores adjacent to custom SQLite databases.
+*.attachments/

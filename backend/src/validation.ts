@@ -1,7 +1,7 @@
 import type { Context } from 'hono'
 
 export class ApiError extends Error {
-  constructor(public status: 400 | 401 | 403 | 404 | 409 | 415 | 429 | 503, public code: string,
+  constructor(public status: 400 | 401 | 403 | 404 | 408 | 409 | 413 | 415 | 429 | 503, public code: string,
     message: string, public details?: Record<string, string>) { super(message) }
 }
 export function invalid(details?: Record<string, string>): never {
