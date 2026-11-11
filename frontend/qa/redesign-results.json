@@ -1,0 +1,225 @@
+{
+  "results": [
+    {
+      "width": 320,
+      "theme": "light",
+      "result": "PASS"
+    },
+    {
+      "width": 320,
+      "theme": "dark",
+      "result": "PASS"
+    },
+    {
+      "width": 390,
+      "theme": "light",
+      "result": "PASS"
+    },
+    {
+      "width": 390,
+      "theme": "dark",
+      "result": "PASS"
+    },
+    {
+      "width": 768,
+      "theme": "light",
+      "result": "PASS"
+    },
+    {
+      "width": 768,
+      "theme": "dark",
+      "result": "PASS"
+    },
+    {
+      "width": 1280,
+      "theme": "light",
+      "result": "PASS"
+    },
+    {
+      "width": 1280,
+      "theme": "dark",
+      "result": "PASS"
+    },
+    {
+      "width": 1920,
+      "theme": "light",
+      "result": "PASS"
+    },
+    {
+      "width": 1920,
+      "theme": "dark",
+      "result": "PASS"
+    },
+    {
+      "result": "PASS",
+      "checks": [
+        "contrast >=4.5",
+        "five widths and two themes",
+        "one active nav item",
+        "keyboard disclosure and dialog Escape",
+        "employee creation clears secret",
+        "create with file and admin decision preserved",
+        "reduced motion"
+      ],
+      "ratios": [
+        {
+          "mode": "light",
+          "contrast": [
+            {
+              "token": "--color-text",
+              "ratio": 16.268480224545662
+            },
+            {
+              "token": "--color-muted",
+              "ratio": 6.165734606163288
+            },
+            {
+              "token": "--color-error",
+              "ratio": 6.821745989279966
+            },
+            {
+              "token": "--color-on-primary",
+              "ratio": 5.16304064227987
+            },
+            {
+              "token": "--color-status-new",
+              "ratio": 6.417353050991119
+            },
+            {
+              "token": "--color-status-review",
+              "ratio": 5.631592320666034
+            },
+            {
+              "token": "--color-status-resolved",
+              "ratio": 6.7623161702946275
+            },
+            {
+              "token": "--color-status-rejected",
+              "ratio": 6.388376680485063
+            }
+          ]
+        },
+        {
+          "mode": "dark",
+          "contrast": [
+            {
+              "token": "--color-text",
+              "ratio": 13.095485501570778
+            },
+            {
+              "token": "--color-muted",
+              "ratio": 8.358459835543965
+            },
+            {
+              "token": "--color-error",
+              "ratio": 8.539601831894313
+            },
+            {
+              "token": "--color-on-primary",
+              "ratio": 7.413216333538549
+            },
+            {
+              "token": "--color-status-new",
+              "ratio": 6.123691555139984
+            },
+            {
+              "token": "--color-status-review",
+              "ratio": 7.810638751117378
+            },
+            {
+              "token": "--color-status-resolved",
+              "ratio": 7.110614965155593
+            },
+            {
+              "token": "--color-status-rejected",
+              "ratio": 7.184096771181073
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "traffic": [
+    {
+      "method": "GET",
+      "path": "/api/v1/auth/me",
+      "status": 401
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/auth/login",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/tickets",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/tickets",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/tickets",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/tickets",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/tickets",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/tickets",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/tickets",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/tickets",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/tickets",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/tickets",
+      "status": 200
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/tickets",
+      "status": 201
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/tickets/5/attachments",
+      "status": 201
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/tickets/5",
+      "status": 200
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/tickets/5",
+      "status": 200
+    }
+  ],
+  "errors": []
+}

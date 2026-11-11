@@ -1,6 +1,6 @@
-import { createTicket, uploadAttachment, getTicket } from './api.js?v=writing-help-20261111-1';
-import { validateAttachment } from './attachment-validation.js?v=writing-help-20261111-1';
-import { t } from './i18n.js?v=writing-help-20261111-1';
+import { createTicket, uploadAttachment, getTicket } from './api.js?v=saas-redesign-20261111-1';
+import { validateAttachment } from './attachment-validation.js?v=saas-redesign-20261111-1';
+import { t } from './i18n.js?v=saas-redesign-20261111-1';
 
 const form = document.querySelector('#new-ticket-form');
 const fields = document.querySelector('#ticket-fields');
@@ -104,7 +104,7 @@ function renderPreviews() {
       if (pending || created) return;
       if (entry.url) URL.revokeObjectURL(entry.url);
       attachments = attachments.filter(item => item !== entry);
-      previewRevision++; filesError = ''; renderNewTicket(); filesInput.focus();
+      previewRevision++; filesError = ''; renderNewTicket(); document.querySelector('#choose-ticket-files').focus();
     });
     card.append(info, remove); previewList.append(card);
   }
@@ -135,6 +135,7 @@ export function renderNewTicket() {
   document.querySelector('#ticket-files-error').textContent = filesError ? t(filesError) : '';
   document.querySelector('#ticket-files-error').hidden = !filesError;
   filesInput.setAttribute('aria-invalid', String(Boolean(filesError)));
+  document.querySelector('#choose-ticket-files').setAttribute('aria-invalid', String(Boolean(filesError)));
   for (const [name, input] of Object.entries(inputs)) {
     const message = document.querySelector(`#ticket-${name}-error`);
     message.textContent = errors[name] ? t(errors[name]) : '';
@@ -149,6 +150,7 @@ export function renderNewTicket() {
   detailsLink.hidden = !created || pending;
   if (created) detailsLink.href = `#/tickets/${created.id}`;
   status.textContent = created ? `${t('ticketCreated')} № ${created.id}.` : statusKey ? t(statusKey) : '';
+  status.dataset.tone = ['newTicketFilesPartial', 'submissionUncertain'].includes(statusKey) ? 'warning' : created && !pending ? 'success' : statusKey && !pending ? 'error' : 'info';
   if (created && selectedCount) status.textContent += ` ${t(statusKey)} ${t('filesUploadedCount')}: ${uploaded}/${selectedCount}.`;
   if (created && !selectedCount) status.textContent += ` ${t('noFilesSelected')}`;
   if (uploadErrorKey) status.textContent += ` ${t(uploadErrorKey)}`;
@@ -210,7 +212,7 @@ form.addEventListener('submit', async event => {
   renderNewTicket();
   const firstInvalid = Object.keys(inputs).find(name => errors[name]);
   if (firstInvalid) { inputs[firstInvalid].focus(); return; }
-  if (filesError) { filesInput.focus(); return; }
+  if (filesError) { document.querySelector('#choose-ticket-files').focus(); return; }
   selectedCount = files.length;
   uploaded = 0;
   pending = true;
@@ -291,6 +293,7 @@ filesInput.addEventListener('change', () => {
   }
   renderNewTicket();
 });
+document.querySelector('#choose-ticket-files').addEventListener('click', () => filesInput.click());
 document.querySelector('#clear-ticket-files').addEventListener('click', () => {
   if (pending) return;
   clearAttachments(); filesError = ''; renderNewTicket();

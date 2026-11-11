@@ -1,11 +1,11 @@
-import { openAccounts, closeAccounts, renderAccounts } from './accounts.js?v=writing-help-20261111-1';
-import { initTheme, renderThemeToggle } from './theme.js?v=writing-help-20261111-1';
-import { login, logout, getMe, normalizePhone, invalidateSessionRequests } from './api.js?v=writing-help-20261111-1';
-import { setLanguage, t } from './i18n.js?v=writing-help-20261111-1';
-import { openEmployee, closeEmployee, renderEmployee } from './employee.js?v=writing-help-20261111-1';
-import { openNewTicket, closeNewTicket, resetNewTicket, renderNewTicket } from './new-ticket.js?v=writing-help-20261111-1';
-import { openTicketDetails, closeTicketDetails, renderTicketDetails } from './ticket.js?v=writing-help-20261111-1';
-import { openAdminQueue, closeAdminQueue, renderAdminQueue } from './admin.js?v=writing-help-20261111-1';
+import { openAccounts, closeAccounts, renderAccounts } from './accounts.js?v=saas-redesign-20261111-1';
+import { initTheme, renderThemeToggle } from './theme.js?v=saas-redesign-20261111-1';
+import { login, logout, getMe, normalizePhone, invalidateSessionRequests } from './api.js?v=saas-redesign-20261111-1';
+import { setLanguage, t } from './i18n.js?v=saas-redesign-20261111-1';
+import { openEmployee, closeEmployee, renderEmployee } from './employee.js?v=saas-redesign-20261111-1';
+import { openNewTicket, closeNewTicket, resetNewTicket, renderNewTicket } from './new-ticket.js?v=saas-redesign-20261111-1';
+import { openTicketDetails, closeTicketDetails, renderTicketDetails } from './ticket.js?v=saas-redesign-20261111-1';
+import { openAdminQueue, closeAdminQueue, renderAdminQueue } from './admin.js?v=saas-redesign-20261111-1';
 
 const form = document.querySelector('#login-form');
 const phone = document.querySelector('#phone');
@@ -29,6 +29,7 @@ function renderLoginCooldown() {
   const remaining = Math.max(0, Math.ceil((loginBlockedUntil - Date.now()) / 1000));
   submit.disabled = submitting || restoringSession || remaining > 0;
   if (remaining > 0) {
+    status.dataset.tone = 'warning';
     delete status.dataset.i18n;
     status.textContent = `${t('loginRetryCountdown')} ${String(Math.floor(remaining / 60)).padStart(2, '0')}:${String(remaining % 60).padStart(2, '0')}`;
   } else if (loginBlockedUntil) {
@@ -40,6 +41,7 @@ function renderLoginCooldown() {
 }
 
 function showStatus(element, key = '') {
+  element.dataset.tone = ['invalidCredentials', 'accountDisabled', 'invalidOrigin', 'invalidInput', 'networkError', 'sessionExpired', 'apiUnavailable', 'serviceUnavailable'].includes(key) ? 'error' : 'info';
   if (key) element.dataset.i18n = key;
   else delete element.dataset.i18n;
   element.textContent = key ? t(key) : '';
@@ -162,10 +164,17 @@ form.addEventListener('submit', async (event) => {
 });
 
 function route() {
+  if (document.activeElement?.id === 'skip-to-content') document.activeElement.blur();
   const changing = Boolean(user && passwordChangeRequired);
   const employee = !changing && user?.role === 'employee';
   const admin = !changing && user?.role === 'admin';
   const managing = admin && location.hash === '#/admin/users';
+  document.querySelector('#workspace-nav').hidden = !user || changing;
+  document.querySelectorAll('[data-nav-role]').forEach(link => {
+    link.hidden = link.dataset.navRole !== user?.role;
+    if (link.dataset.navPage === (managing ? 'users' : 'tickets')) link.setAttribute('aria-current', 'page');
+    else link.removeAttribute('aria-current');
+  });
   const creating = employee && location.hash === '#/new-ticket';
   if (!creating) closeNewTicket();
   const detailMatch = employee ? location.hash.match(/^#\/tickets\/(\d+)$/) : admin ? location.hash.match(/^#\/admin\/tickets\/(\d+)$/) : null;
@@ -257,6 +266,9 @@ async function restoreSession() {
   }
 }
 window.addEventListener('hashchange', route);
+document.querySelector('#skip-to-content').addEventListener('click', event => {
+  event.preventDefault(); document.querySelector('#app').focus();
+});
 window.addEventListener('session-refresh-requested', restoreSession);
 setLanguage('ru');
 initTheme();

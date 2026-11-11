@@ -1,6 +1,6 @@
-import { validateAttachment } from './attachment-validation.js?v=writing-help-20261111-1';
-import { getTicket, updateTicketStatus, uploadAttachment } from './api.js?v=writing-help-20261111-1';
-import { t } from './i18n.js?v=writing-help-20261111-1';
+import { validateAttachment } from './attachment-validation.js?v=saas-redesign-20261111-1';
+import { getTicket, updateTicketStatus, uploadAttachment } from './api.js?v=saas-redesign-20261111-1';
+import { t } from './i18n.js?v=saas-redesign-20261111-1';
 
 const screen = document.querySelector('#ticket-detail-screen');
 const content = document.querySelector('#ticket-detail-content');
@@ -56,6 +56,7 @@ function renderAttachments() {
 }
 
 function renderActions() {
+  actionStatus.dataset.tone = feedback === 'decisionSaved' ? 'success' : ['decisionConflict', 'decisionUncertain'].includes(feedback) ? 'warning' : 'error';
   actionStatus.hidden = !adminView || !feedback;
   actionStatus.textContent = feedback ? t(feedback) : '';
   actions.hidden = !adminView || !ticket;

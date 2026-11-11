@@ -64,7 +64,7 @@ try {
   await page.goto(`${origin}/#/login`, { waitUntil: 'commit' });
   await appReady;
   await page.waitForFunction(() => document.documentElement.dataset.theme === 'dark' && getComputedStyle(document.documentElement).colorScheme === 'dark');
-  assert.equal(await page.evaluate(() => getComputedStyle(document.documentElement).backgroundColor), 'rgb(21, 26, 34)');
+  assert.equal(await page.evaluate(() => getComputedStyle(document.documentElement).backgroundColor), 'rgb(16, 24, 39)');
   checks.push('System dark applied before app module executes (no light bootstrap frame)');
   releaseApp();
   await page.waitForFunction(() => !document.querySelector('#submit-login').disabled);
@@ -97,7 +97,7 @@ try {
   await page.locator('#submit-login').click(); await loginReady;
   await page.locator('#theme-toggle').click();
   assert.equal(await page.locator('#submit-login').isDisabled(), true);
-  assert.equal(await page.locator('#submit-login').evaluate(el => getComputedStyle(el).opacity), '0.65');
+  assert.equal(await page.locator('#submit-login').evaluate(el => getComputedStyle(el).opacity), '0.6');
   assert.equal(await page.locator('#password').inputValue(), secret);
   releaseLogin(); await page.waitForURL('**/#/employee'); await page.unroute('**/api/v1/auth/login');
   await page.locator('#theme-toggle').click();
@@ -147,12 +147,13 @@ try {
   assert.equal(await page.locator('html').getAttribute('data-theme'),'dark'); await shot('theme-dark-admin');
   await page.locator('a[href="#/admin/users"]').click();
   await page.locator('#users-list li').waitFor();
+  await page.locator('#create-user-panel summary').click();
   await page.locator('#user-full_name').fill('Preserved user draft');
   await page.locator('#theme-toggle').click(); await page.locator('#theme-toggle').click();
   assert.equal(await page.locator('#user-full_name').inputValue(),'Preserved user draft');
   await page.locator('#users-list li button').first().click();
   await page.locator('#reset-password-dialog').waitFor({state:'visible'});
-  assert.equal(await page.locator('#reset-password-dialog').evaluate(el => getComputedStyle(el).backgroundColor),'rgb(30, 38, 50)');
+  assert.equal(await page.locator('#reset-password-dialog').evaluate(el => getComputedStyle(el).backgroundColor),'rgb(28, 41, 64)');
   await shot('theme-dark-modal');
   await page.locator('#close-reset-password').click();
   await page.locator('#theme-toggle').click(); await page.locator('#users-list li button').first().click();

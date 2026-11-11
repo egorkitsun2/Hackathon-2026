@@ -1,5 +1,9 @@
 const messages = {
   ru: {
+    employeeListTitle: 'Список сотрудников',
+    chooseFiles: 'Выбрать файлы',
+    skipContent: 'Перейти к содержимому', workspaceNavigation: 'Навигация по рабочему пространству',
+    usersSubtitle: 'Сотрудники и управление доступом',
     ticketTitleAdvice: 'Кратко опишите суть обращения.',
     writingHelpTitle: 'Как правильно описать обращение?', writingHelpChoose: 'Выберите тип обращения, чтобы увидеть рекомендации.',
     helpWhatHappened: 'Что произошло?', helpWhereWhen: 'Где или когда возникла проблема?',
@@ -176,6 +180,10 @@ const messages = {
     loginUnavailable: 'Поля заполнены корректно. Подключение к серверу ещё не готово — вход не выполнен.',
   },
   kk: {
+    employeeListTitle: 'Қызметкерлер тізімі',
+    chooseFiles: 'Файлдарды таңдау',
+    skipContent: 'Мазмұнға өту', workspaceNavigation: 'Жұмыс кеңістігінің навигациясы',
+    usersSubtitle: 'Қызметкерлер және қолжетімділікті басқару',
     ticketTitleAdvice: 'Өтініштің мәнін қысқаша сипаттаңыз.',
     writingHelpTitle: 'Өтінішті қалай дұрыс сипаттауға болады?', writingHelpChoose: 'Ұсынымдарды көру үшін өтініш түрін таңдаңыз.',
     helpWhatHappened: 'Не болды?', helpWhereWhen: 'Мәселе қайда немесе қашан туындады?',

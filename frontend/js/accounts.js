@@ -1,5 +1,5 @@
-import { changePassword, getUsers, createUser, updateUser, resetUserPassword, normalizePhone } from './api.js?v=writing-help-20261111-1';
-import { t } from './i18n.js?v=writing-help-20261111-1';
+import { changePassword, getUsers, createUser, updateUser, resetUserPassword, normalizePhone } from './api.js?v=saas-redesign-20261111-1';
+import { t } from './i18n.js?v=saas-redesign-20261111-1';
 
 const $ = id => document.querySelector(`#${id}`);
 let version = 0;
@@ -80,6 +80,7 @@ function errorNotice(error) {
 function notice(id, value = '') { notices[id] = typeof value === 'string' ? { key: value } : value; }
 const uncertain = error => ['NETWORK_ERROR', 'API_UNAVAILABLE', 'INTERNAL_ERROR', 'REQUEST_ABORTED'].includes(error.message);
 function clearSecret() {
+  $('user-result-dialog').close();
   $('temporary-password').textContent = '';
   $('created-user-phone').textContent = '';
   $('user-created').hidden = true;
@@ -93,6 +94,7 @@ export function renderAccounts() {
   }
   for (const id of ['change-password-status', 'create-user-status', 'users-status', 'users-action-status', 'reset-copy-status']) {
     const value = notices[id];
+    $(id).dataset.tone = /Uncertain|Conflict/.test(value?.key ?? '') ? 'warning' : /Error|Failed|Invalid|Wrong|Exists|Forbidden|NotFound|Unavailable/.test(value?.key ?? '') ? 'error' : /Saved|Copied/.test(value?.key ?? '') ? 'success' : 'info';
     $(id).textContent = value?.key ? t(value.key) + (value.seconds != null ? ` ${t('retrySeconds')} ${value.seconds}` : '') : '';
   }
   $('change-password-fields').disabled = pending;
@@ -105,21 +107,26 @@ export function renderAccounts() {
   $('users-list').replaceChildren();
   for (const user of result?.data ?? []) {
     const row = document.createElement('li');
-    row.className = 'ticket';
-    for (const [tag, text] of [
+    row.className = 'ticket user-card';
+    for (const [index, [tag, text]] of [
       ['h3', user.full_name], ['p', `${t('phoneLabel')}: ${user.phone}`],
       ['p', `${t('department')}: ${user.department}`], ['p', `${t('position')}: ${user.position}`],
       ['p', t(user.is_active ? 'accountActive' : 'accountBlocked')],
       ['p', t(user.must_change_password ? 'passwordPending' : 'passwordUpdated')],
-    ]) { const element = document.createElement(tag); element.textContent = text; row.append(element); }
+    ].entries()) {
+      const element = document.createElement(tag); element.textContent = text;
+      element.className = ['', 'user-phone', 'user-detail', 'user-detail',
+        `user-status ${user.is_active ? 'account-active' : 'account-blocked'}`, 'user-password-state'][index];
+      row.append(element);
+    }
     const button = document.createElement('button');
-    button.type = 'button'; button.className = 'secondary-button';
+    button.type = 'button'; button.className = `secondary-button ${user.is_active ? 'danger-button' : 'positive-button'}`;
     button.textContent = t(user.is_active ? 'blockEmployee' : 'activateEmployee');
     button.disabled = changingUser !== null || loading || pending || resetting;
     button.addEventListener('click', () => toggleUser(user));
     if (user.role === 'employee') {
       const reset = document.createElement('button');
-      reset.type = 'button'; reset.className = 'secondary-button';
+      reset.type = 'button'; reset.className = 'secondary-button danger-ghost';
       reset.textContent = t('resetPassword');
       reset.disabled = button.disabled || !$('user-created').hidden;
       reset.addEventListener('click', () => confirmReset(user));
@@ -153,6 +160,7 @@ async function loadUsers() {
 }
 
 export function closeAccounts() {
+  $('create-user-panel').open = false;
   clearReset(); resetting = false;
   version++; readId++; active = ''; onChanged = null; page = 1; result = null;
   pending = false; loading = false; changingUser = null; errors = {}; notices = {};
@@ -208,6 +216,7 @@ $('create-user-form').addEventListener('submit', async event => {
     $('temporary-password').textContent = response.data.temporary_password;
     $('created-user-phone').textContent = response.data.user.phone;
     $('user-created').hidden = false;
+    $('user-result-dialog').showModal();
     $('close-user-created').focus();
     page = 1; loadUsers();
   } catch (error) {
@@ -239,6 +248,10 @@ async function toggleUser(user) {
 }
 
 $('close-user-created').addEventListener('click', () => { clearSecret(); renderAccounts(); $('user-full_name').focus(); });
+$('user-result-dialog').addEventListener('close', () => {
+  if ($('user-result-dialog').open) return;
+  clearSecret(); renderAccounts();
+});
 $('retry-users').addEventListener('click', () => { if (!loading && active === 'users') loadUsers(); });
 $('users-previous').addEventListener('click', () => { if (!loading && changingUser === null && page > 1) { page--; loadUsers(); } });
 $('users-next').addEventListener('click', () => { if (!loading && changingUser === null && result && page * result.pagination.limit < result.pagination.total) { page++; loadUsers(); } });

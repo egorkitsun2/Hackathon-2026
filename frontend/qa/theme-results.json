@@ -13,31 +13,31 @@
       "contrast": [
         {
           "name": "--color-text",
-          "ratio": 11.195603099623863
+          "ratio": 11.603198156319387
         },
         {
           "name": "--color-muted",
-          "ratio": 7.1936152288775945
+          "ratio": 7.405977101178893
         },
         {
           "name": "--color-error",
-          "ratio": 6.707130874857855
+          "ratio": 7.566477181747289
         },
         {
           "name": "--color-status-new",
-          "ratio": 6.719297429625681
+          "ratio": 7.314480575962044
         },
         {
           "name": "--color-status-review",
-          "ratio": 8.644773417752502
+          "ratio": 9.230875616920068
         },
         {
           "name": "--color-status-resolved",
-          "ratio": 7.840447577148428
+          "ratio": 8.83357398088028
         },
         {
           "name": "--color-status-rejected",
-          "ratio": 6.678375307046771
+          "ratio": 7.920897369911062
         }
       ]
     }
