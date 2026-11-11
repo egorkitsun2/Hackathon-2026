@@ -1,11 +1,11 @@
-import { openAccounts, closeAccounts, renderAccounts } from './accounts.js?v=saas-redesign-20261111-1';
-import { initTheme, renderThemeToggle } from './theme.js?v=saas-redesign-20261111-1';
-import { login, logout, getMe, normalizePhone, invalidateSessionRequests } from './api.js?v=saas-redesign-20261111-1';
-import { setLanguage, t } from './i18n.js?v=saas-redesign-20261111-1';
-import { openEmployee, closeEmployee, renderEmployee } from './employee.js?v=saas-redesign-20261111-1';
-import { openNewTicket, closeNewTicket, resetNewTicket, renderNewTicket } from './new-ticket.js?v=saas-redesign-20261111-1';
-import { openTicketDetails, closeTicketDetails, renderTicketDetails } from './ticket.js?v=saas-redesign-20261111-1';
-import { openAdminQueue, closeAdminQueue, renderAdminQueue } from './admin.js?v=saas-redesign-20261111-1';
+import { openAccounts, closeAccounts, renderAccounts } from './accounts.js?v=saved-previews-20261112-1';
+import { initTheme, renderThemeToggle } from './theme.js?v=saved-previews-20261112-1';
+import { login, logout, getMe, normalizePhone, invalidateSessionRequests } from './api.js?v=saved-previews-20261112-1';
+import { setLanguage, t } from './i18n.js?v=saved-previews-20261112-1';
+import { openEmployee, closeEmployee, renderEmployee } from './employee.js?v=saved-previews-20261112-1';
+import { openNewTicket, closeNewTicket, resetNewTicket, renderNewTicket } from './new-ticket.js?v=saved-previews-20261112-1';
+import { openTicketDetails, closeTicketDetails, renderTicketDetails } from './ticket.js?v=saved-previews-20261112-1';
+import { openAdminQueue, closeAdminQueue, renderAdminQueue } from './admin.js?v=saved-previews-20261112-1';
 
 const form = document.querySelector('#login-form');
 const phone = document.querySelector('#phone');

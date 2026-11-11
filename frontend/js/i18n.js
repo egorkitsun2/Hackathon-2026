@@ -1,5 +1,6 @@
 const messages = {
   ru: {
+    attachmentPreviewLoading: 'Загрузка предпросмотра…',
     employeeListTitle: 'Список сотрудников',
     chooseFiles: 'Выбрать файлы',
     skipContent: 'Перейти к содержимому', workspaceNavigation: 'Навигация по рабочему пространству',
@@ -180,6 +181,7 @@ const messages = {
     loginUnavailable: 'Поля заполнены корректно. Подключение к серверу ещё не готово — вход не выполнен.',
   },
   kk: {
+    attachmentPreviewLoading: 'Алдын ала қарау жүктелуде…',
     employeeListTitle: 'Қызметкерлер тізімі',
     chooseFiles: 'Файлдарды таңдау',
     skipContent: 'Мазмұнға өту', workspaceNavigation: 'Жұмыс кеңістігінің навигациясы',

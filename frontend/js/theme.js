@@ -1,4 +1,4 @@
-import { t } from './i18n.js?v=saas-redesign-20261111-1';
+import { t } from './i18n.js?v=saved-previews-20261112-1';
 
 const systemTheme = matchMedia('(prefers-color-scheme: dark)');
 let preference = null;

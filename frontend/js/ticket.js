@@ -1,6 +1,6 @@
-import { validateAttachment } from './attachment-validation.js?v=saas-redesign-20261111-1';
-import { getTicket, updateTicketStatus, uploadAttachment } from './api.js?v=saas-redesign-20261111-1';
-import { t } from './i18n.js?v=saas-redesign-20261111-1';
+import { validateAttachment } from './attachment-validation.js?v=saved-previews-20261112-1';
+import { getTicket, updateTicketStatus, uploadAttachment, getAttachmentPreview } from './api.js?v=saved-previews-20261112-1';
+import { t } from './i18n.js?v=saved-previews-20261112-1';
 
 const screen = document.querySelector('#ticket-detail-screen');
 const content = document.querySelector('#ticket-detail-content');
@@ -29,6 +29,57 @@ let uploadController = null;
 let uploadVersion = 0;
 let attachmentFeedback = '';
 const fileInput = document.querySelector('#attachment-file');
+const attachmentPreviews = new Map();
+
+function clearAttachmentPreviews() {
+  for (const entry of attachmentPreviews.values()) {
+    entry.controller.abort();
+    if (entry.url) URL.revokeObjectURL(entry.url);
+  }
+  attachmentPreviews.clear();
+}
+
+function loadAttachmentPreview(file, container) {
+  const id = requestId;
+  const currentTicket = ticket.id;
+  const entry = { controller: new AbortController(), url: null, state: 'loading', container };
+  attachmentPreviews.set(file.id, entry);
+  getAttachmentPreview(currentTicket, file.id, entry.controller.signal).then(blob => {
+    if (id !== requestId || attachmentPreviews.get(file.id) !== entry) return;
+    entry.url = URL.createObjectURL(blob); entry.state = 'ready';
+    renderSavedImage(file, entry);
+  }).catch(() => {
+    if (id !== requestId || attachmentPreviews.get(file.id) !== entry) return;
+    entry.state = 'error'; renderSavedImage(file, entry);
+  });
+  return entry;
+}
+
+function renderSavedImage(file, entry) {
+  const container = entry.container;
+  container.replaceChildren();
+  if (entry.url) {
+    const image = document.createElement('img');
+    const source = entry.url;
+    image.src = source; image.alt = file.original_name; image.className = 'attachment-image-preview';
+    image.addEventListener('error', () => {
+      if (attachmentPreviews.get(file.id) !== entry || entry.url !== source) return;
+      URL.revokeObjectURL(source); entry.url = null; entry.state = 'error'; renderSavedImage(file, entry);
+    });
+    container.append(image);
+  } else {
+    container.append(textElement('p', t(entry.state === 'loading' ? 'attachmentPreviewLoading' : 'attachmentPreviewUnavailable'), 'hint'));
+    if (entry.state === 'error') {
+      const retryPreview = textElement('button', t('retry'), 'secondary-button'); retryPreview.type = 'button';
+      retryPreview.setAttribute('aria-label', `${t('retry')}: ${file.original_name}`);
+      retryPreview.addEventListener('click', () => {
+        if (!ticket || attachmentPreviews.get(file.id) !== entry) return;
+        const next = loadAttachmentPreview(file, container); renderSavedImage(file, next);
+      });
+      container.append(retryPreview);
+    }
+  }
+}
 
 
 function renderAttachments() {
@@ -37,7 +88,7 @@ function renderAttachments() {
   const files = ticket?.attachments ?? [];
   for (const file of files) {
     const item = document.createElement('li');
-    item.className = 'ticket';
+    item.className = 'ticket saved-attachment';
     const link = textElement('a', t('attachmentDownload'), 'back-link');
     // Build a same-origin protected URL; never use an arbitrary metadata URL.
     if (Number.isSafeInteger(file.id) && file.id > 0) {
@@ -45,6 +96,14 @@ function renderAttachments() {
       link.download = file.original_name;
     }
     item.append(textElement('p', file.original_name), textElement('p', `${file.mime_type} · ${file.size_bytes} ${t('attachmentBytes')}`, 'hint'), link);
+    if (file.mime_type === 'application/pdf') {
+      item.dataset.kind = 'pdf';
+      const icon = textElement('span', 'PDF', 'attachment-pdf'); icon.setAttribute('aria-hidden', 'true'); item.append(icon);
+    } else if (['image/jpeg', 'image/png', 'image/webp'].includes(file.mime_type) && Number.isSafeInteger(file.id) && file.id > 0) {
+      const container = document.createElement('div');
+      const entry = attachmentPreviews.get(file.id) ?? loadAttachmentPreview(file, container);
+      entry.container = container; renderSavedImage(file, entry); item.append(container);
+    }
     list.append(item);
   }
   document.querySelector('#attachments-empty').hidden = files.length > 0;
@@ -136,6 +195,7 @@ export function renderTicketDetails() {
 
 async function loadTicket(message = '') {
   const id = ++requestId;
+  clearAttachmentPreviews();
   ticket = null;
   saving = false;
   feedback = message;
@@ -166,6 +226,7 @@ export function openTicketDetails(id, admin = false) {
 }
 
 export function closeTicketDetails() {
+  clearAttachmentPreviews();
   uploadVersion++;
   uploadController?.abort();
   uploadController = null;

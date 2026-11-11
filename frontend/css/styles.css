@@ -204,6 +204,11 @@ input[type="file"]::file-selector-button { min-height: 2.5rem; margin-right: .75
 .attachment-pdf { display: grid; place-items: center; font-weight: 700; color: var(--color-primary); background: var(--color-accent-soft); }
 .attachment-preview-info { flex: 1 1 10rem; min-width: 0; overflow-wrap: anywhere; font-weight: 500; }
 .attachment-preview-info .hint { font-weight: 400; }
+.saved-attachment > p:first-child { font-weight: 600; }
+.attachment-image-preview { display: block; width: 100%; max-height: 18rem; object-fit: contain; margin-top: .875rem; border: 1px solid var(--color-border); border-radius: var(--radius); background: var(--color-inset); }
+.saved-attachment[data-kind="pdf"] { display: grid; grid-template-columns: 4.5rem minmax(0,1fr); gap: .25rem 1rem; align-items: start; }
+.saved-attachment[data-kind="pdf"] > p, .saved-attachment[data-kind="pdf"] > a { grid-column: 2; }
+.saved-attachment[data-kind="pdf"] > .attachment-pdf { grid-column: 1; grid-row: 1 / span 3; }
 .ticket-detail-content { display: grid; grid-template-columns: minmax(0, 1fr) 21rem; gap: var(--block-gap); align-items: start; }
 .detail-main-column, .detail-side-column { display: grid; min-width: 0; gap: var(--block-gap); }
 .detail-main-column { grid-column: 1; grid-row: 1; }
