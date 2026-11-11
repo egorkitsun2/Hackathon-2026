@@ -1,5 +1,5 @@
-import { changePassword, getUsers, createUser, updateUser, resetUserPassword, normalizePhone } from './api.js?v=theme-20261111-1';
-import { t } from './i18n.js?v=theme-20261111-1';
+import { changePassword, getUsers, createUser, updateUser, resetUserPassword, normalizePhone } from './api.js?v=writing-help-20261111-1';
+import { t } from './i18n.js?v=writing-help-20261111-1';
 
 const $ = id => document.querySelector(`#${id}`);
 let version = 0;

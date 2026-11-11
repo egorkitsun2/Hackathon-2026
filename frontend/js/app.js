@@ -1,11 +1,11 @@
-import { openAccounts, closeAccounts, renderAccounts } from './accounts.js?v=theme-20261111-1';
-import { initTheme, renderThemeToggle } from './theme.js?v=theme-20261111-1';
-import { login, logout, getMe, normalizePhone, invalidateSessionRequests } from './api.js?v=theme-20261111-1';
-import { setLanguage, t } from './i18n.js?v=theme-20261111-1';
-import { openEmployee, closeEmployee, renderEmployee } from './employee.js?v=theme-20261111-1';
-import { openNewTicket, closeNewTicket, resetNewTicket, renderNewTicket } from './new-ticket.js?v=theme-20261111-1';
-import { openTicketDetails, closeTicketDetails, renderTicketDetails } from './ticket.js?v=theme-20261111-1';
-import { openAdminQueue, closeAdminQueue, renderAdminQueue } from './admin.js?v=theme-20261111-1';
+import { openAccounts, closeAccounts, renderAccounts } from './accounts.js?v=writing-help-20261111-1';
+import { initTheme, renderThemeToggle } from './theme.js?v=writing-help-20261111-1';
+import { login, logout, getMe, normalizePhone, invalidateSessionRequests } from './api.js?v=writing-help-20261111-1';
+import { setLanguage, t } from './i18n.js?v=writing-help-20261111-1';
+import { openEmployee, closeEmployee, renderEmployee } from './employee.js?v=writing-help-20261111-1';
+import { openNewTicket, closeNewTicket, resetNewTicket, renderNewTicket } from './new-ticket.js?v=writing-help-20261111-1';
+import { openTicketDetails, closeTicketDetails, renderTicketDetails } from './ticket.js?v=writing-help-20261111-1';
+import { openAdminQueue, closeAdminQueue, renderAdminQueue } from './admin.js?v=writing-help-20261111-1';
 
 const form = document.querySelector('#login-form');
 const phone = document.querySelector('#phone');

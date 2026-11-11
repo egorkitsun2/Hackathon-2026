@@ -1,5 +1,12 @@
 const messages = {
   ru: {
+    ticketTitleAdvice: 'Кратко опишите суть обращения.',
+    writingHelpTitle: 'Как правильно описать обращение?', writingHelpChoose: 'Выберите тип обращения, чтобы увидеть рекомендации.',
+    helpWhatHappened: 'Что произошло?', helpWhereWhen: 'Где или когда возникла проблема?',
+    helpWorkImpact: 'Как это мешает работе?', helpSolution: 'Какое решение вы предлагаете?',
+    helpSuggestionChange: 'Что вы предлагаете изменить?', helpSuggestionBenefit: 'Почему это будет полезно?', helpSuggestionResult: 'Какой результат ожидается?',
+    helpComplaintAbout: 'С чем связана ваша жалоба?', helpComplaintWhereWhen: 'Где или когда это произошло?', helpComplaintImpact: 'Как это повлияло на вас или работу?', helpComplaintOutcome: 'Какого решения вы ожидаете?',
+    helpGratitudeWho: 'Кого вы хотите поблагодарить?', helpGratitudeAction: 'За какую помощь или действие?', helpGratitudeImpact: 'Как это помогло вам или команде?',
     switchLightTheme: 'Включить светлую тему', switchDarkTheme: 'Включить тёмную тему',
     selectedAttachments: 'Выбранные вложения', removeSelectedFile: 'Удалить файл',
     attachmentPreviewUnavailable: 'Не удалось показать миниатюру.',
@@ -169,6 +176,13 @@ const messages = {
     loginUnavailable: 'Поля заполнены корректно. Подключение к серверу ещё не готово — вход не выполнен.',
   },
   kk: {
+    ticketTitleAdvice: 'Өтініштің мәнін қысқаша сипаттаңыз.',
+    writingHelpTitle: 'Өтінішті қалай дұрыс сипаттауға болады?', writingHelpChoose: 'Ұсынымдарды көру үшін өтініш түрін таңдаңыз.',
+    helpWhatHappened: 'Не болды?', helpWhereWhen: 'Мәселе қайда немесе қашан туындады?',
+    helpWorkImpact: 'Бұл жұмысқа қалай кедергі келтіреді?', helpSolution: 'Қандай шешім ұсынасыз?',
+    helpSuggestionChange: 'Нені өзгертуді ұсынасыз?', helpSuggestionBenefit: 'Бұл неліктен пайдалы болады?', helpSuggestionResult: 'Қандай нәтиже күтіледі?',
+    helpComplaintAbout: 'Шағымыңыз неге қатысты?', helpComplaintWhereWhen: 'Бұл қайда немесе қашан болды?', helpComplaintImpact: 'Бұл сізге немесе жұмысқа қалай әсер етті?', helpComplaintOutcome: 'Қандай шешім күтесіз?',
+    helpGratitudeWho: 'Кімге алғыс айтқыңыз келеді?', helpGratitudeAction: 'Қандай көмек немесе әрекет үшін?', helpGratitudeImpact: 'Бұл сізге немесе командаға қалай көмектесті?',
     switchLightTheme: 'Ашық тақырыпты қосу', switchDarkTheme: 'Күңгірт тақырыпты қосу',
     selectedAttachments: 'Таңдалған тіркемелер', removeSelectedFile: 'Файлды жою',
     attachmentPreviewUnavailable: 'Нобайды көрсету мүмкін болмады.',

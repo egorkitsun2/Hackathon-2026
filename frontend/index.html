@@ -6,9 +6,9 @@
   <meta name="color-scheme" content="light dark">
   <title>Голос команды</title>
   <link rel="icon" href="data:,">
-  <script src="js/theme-init.js?v=theme-20261111-1"></script>
-  <link rel="stylesheet" href="css/styles.css?v=theme-20261111-1">
-  <script type="module" src="js/app.js?v=theme-20261111-1"></script>
+  <script src="js/theme-init.js?v=writing-help-20261111-1"></script>
+  <link rel="stylesheet" href="css/styles.css?v=writing-help-20261111-1">
+  <script type="module" src="js/app.js?v=writing-help-20261111-1"></script>
 </head>
 <body>
   <header class="site-header">
@@ -90,7 +90,8 @@
             </div>
             <div class="field">
               <label for="ticket-title" data-i18n="ticketTitleLabel">Тема</label>
-              <input id="ticket-title" name="title" type="text" required aria-describedby="ticket-title-hint ticket-title-counter ticket-title-error">
+              <input id="ticket-title" name="title" type="text" required aria-describedby="ticket-title-advice ticket-title-hint ticket-title-counter ticket-title-error">
+              <p id="ticket-title-advice" class="hint" data-i18n="ticketTitleAdvice">Кратко опишите суть обращения.</p>
               <p id="ticket-title-hint" class="hint" data-i18n="ticketTitleHint">От 5 до 120 символов.</p>
               <output id="ticket-title-counter" class="character-counter" for="ticket-title" aria-live="polite">0 / 120</output>
               <p id="ticket-title-error" class="field-error" aria-live="polite" hidden></p>
@@ -101,6 +102,11 @@
               <p id="ticket-description-hint" class="hint" data-i18n="ticketDescriptionHint">От 10 до 4000 символов.</p>
               <output id="ticket-description-counter" class="character-counter" for="ticket-description" aria-live="polite">0 / 4000</output>
               <p id="ticket-description-error" class="field-error" aria-live="polite" hidden></p>
+              <details id="ticket-writing-help" class="ticket-writing-help">
+                <summary data-i18n="writingHelpTitle">Как правильно описать обращение?</summary>
+                <p id="ticket-help-choose" class="hint" data-i18n="writingHelpChoose">Выберите тип обращения, чтобы увидеть рекомендации.</p>
+                <ul id="ticket-help-prompts" hidden></ul>
+              </details>
             </div>
             <div class="field">
               <label for="ticket-files" data-i18n="newTicketFiles"></label>

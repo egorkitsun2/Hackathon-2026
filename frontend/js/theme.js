@@ -1,4 +1,4 @@
-import { t } from './i18n.js?v=theme-20261111-1';
+import { t } from './i18n.js?v=writing-help-20261111-1';
 
 const systemTheme = matchMedia('(prefers-color-scheme: dark)');
 let preference = null;

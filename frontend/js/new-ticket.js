@@ -1,6 +1,6 @@
-import { createTicket, uploadAttachment, getTicket } from './api.js?v=theme-20261111-1';
-import { validateAttachment } from './attachment-validation.js?v=theme-20261111-1';
-import { t } from './i18n.js?v=theme-20261111-1';
+import { createTicket, uploadAttachment, getTicket } from './api.js?v=writing-help-20261111-1';
+import { validateAttachment } from './attachment-validation.js?v=writing-help-20261111-1';
+import { t } from './i18n.js?v=writing-help-20261111-1';
 
 const form = document.querySelector('#new-ticket-form');
 const fields = document.querySelector('#ticket-fields');
@@ -26,6 +26,27 @@ let previewOpen = false;
 let previewRevision = 0;
 let renderedPreviewKey = '';
 const previewList = document.querySelector('#ticket-previews');
+let writingHelpKey = '';
+const writingPrompts = {
+  problem: ['helpWhatHappened', 'helpWhereWhen', 'helpWorkImpact', 'helpSolution'],
+  suggestion: ['helpSuggestionChange', 'helpSuggestionBenefit', 'helpSuggestionResult'],
+  complaint: ['helpComplaintAbout', 'helpComplaintWhereWhen', 'helpComplaintImpact', 'helpComplaintOutcome'],
+  gratitude: ['helpGratitudeWho', 'helpGratitudeAction', 'helpGratitudeImpact'],
+};
+
+function renderWritingHelp() {
+  const key = `${inputs.type.value}:${t('writingHelpTitle')}`;
+  if (key === writingHelpKey) return;
+  writingHelpKey = key;
+  const prompts = writingPrompts[inputs.type.value] ?? [];
+  const list = document.querySelector('#ticket-help-prompts');
+  list.replaceChildren();
+  for (const prompt of prompts) {
+    const item = document.createElement('li'); item.textContent = t(prompt); list.append(item);
+  }
+  list.hidden = !prompts.length;
+  document.querySelector('#ticket-help-choose').hidden = Boolean(prompts.length);
+}
 
 function releasePreviewURLs() {
   for (const entry of attachments) {
@@ -102,6 +123,7 @@ export function validateTicket(values) {
 }
 
 export function renderNewTicket() {
+  renderWritingHelp();
   renderPreviews();
   for (const [name, maximum] of [['title', 120], ['description', 4000]]) {
     const length = ticketTextLength(inputs[name].value);
@@ -134,6 +156,7 @@ export function renderNewTicket() {
 }
 
 export function resetNewTicket() {
+  document.querySelector('#ticket-writing-help').open = false;
   clearAttachments();
   version++;
   uploadController?.abort();
@@ -166,12 +189,14 @@ export function closeNewTicket() {
 }
 
 for (const [name, input] of Object.entries(inputs)) {
-  input.addEventListener('input', () => {
+  const onInput = () => {
     delete errors[name];
     // Keep an uncertain submission warning visible until the user checks the list.
     if (statusKey !== 'submissionUncertain') statusKey = '';
     renderNewTicket();
-  });
+  };
+  input.addEventListener('input', onInput);
+  if (name === 'type') input.addEventListener('change', onInput);
 }
 
 form.addEventListener('submit', async event => {

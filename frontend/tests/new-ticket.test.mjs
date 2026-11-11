@@ -254,3 +254,32 @@ test('leaving form releases URLs, reopening recreates them, reset drops files an
   h.context.resetNewTicket(); assert.equal(previews(h).length, 0);
   assert.equal(h.get('#ticket-files').value, '');
 });
+
+
+test('writing prompts match existing types, change language and never overwrite or submit draft content', async () => {
+  let sent;
+  const h = harness(async values => { sent = values; return { data: { id: 42 } }; });
+  h.context.renderNewTicket();
+  assert.equal(h.get('#ticket-help-choose').hidden, false);
+  const title = '  Draft title  ', description = '  My own description, not a template.  ';
+  h.fill({ title, description });
+  h.get('#ticket-writing-help').open = true;
+  for (const [type, count, first] of [
+    ['problem', 4, 'helpWhatHappened'], ['suggestion', 3, 'helpSuggestionChange'],
+    ['complaint', 4, 'helpComplaintAbout'], ['gratitude', 3, 'helpGratitudeWho'],
+  ]) {
+    h.get('#ticket-type').value = type; h.get('#ticket-type').events.change();
+    assert.equal(h.get('#ticket-help-prompts').children.length, count);
+    assert.equal(h.get('#ticket-help-prompts').children[0].textContent, `ru:${first}`);
+    assert.equal(h.get('#ticket-help-choose').hidden, true);
+    assert.equal(h.get('#ticket-title').value, title);
+    assert.equal(h.get('#ticket-description').value, description);
+    assert.equal(h.get('#ticket-writing-help').open, true);
+  }
+  h.setLanguage('kk'); h.context.renderNewTicket();
+  assert.equal(h.get('#ticket-help-prompts').children[0].textContent, 'kk:helpGratitudeWho');
+  await h.submit();
+  assert.deepEqual({ ...sent }, { type: 'gratitude', title, description });
+  h.context.resetNewTicket(); assert.equal(h.get('#ticket-writing-help').open, false);
+  assert.equal(h.get('#ticket-help-prompts').hidden, true);
+});
