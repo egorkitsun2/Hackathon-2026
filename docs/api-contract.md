@@ -29,6 +29,7 @@ are translated on the frontend (RU/KZ); API enums are language-neutral.
 | PATCH | /admin/tickets/:id | Admin | 200 |
 | POST | /admin/users | Admin | 201 |
 | GET | /admin/users | Admin | 200 |
+| GET | /admin/stats | Admin | 200 |
 | PATCH | /admin/users/:id | Admin | 200 |
 | POST | /auth/change-password | Session, including temporary-password sessions | 200 |
 
@@ -487,4 +488,37 @@ All three /admin/users routes require a current active administrator session.
 Anonymous requests return 401; employees return 403 FORBIDDEN. All new mutation
 routes retain the existing exact Origin check, JSON media type, 32 KiB body
 limit, strict validation and generic error envelopes. No registration,
-invitations, attachments or statistics were added.
+invitations or attachments were added.
+
+## Admin dashboard statistics (additive v0.3 endpoint)
+
+GET /api/v1/admin/stats requires a current active administrator session.
+No request body, filters or pagination. 200 example:
+
+```json
+{
+  "data": {
+    "employees": {"total": 3, "active": 2},
+    "tickets": {"total": 5, "new": 2, "in_review": 1, "resolved": 1, "rejected": 1}
+  }
+}
+```
+
+All seven values are integer counts computed from the existing SQLite users
+and tickets tables in a single read statement, not placeholders or cached values.
+`employees.total` includes only role=employee, both active and blocked;
+`employees.active` includes only role=employee with is_active=1, including active
+employees who still need to change their temporary password. Admins are excluded.
+
+`tickets.total` includes every ticket, including tickets by blocked employees.
+The other four ticket fields count the corresponding exact status enum; resolved
+and rejected are separate counts, not a combined terminal count. Their sum equals
+tickets.total. History events never multiply ticket counts. Empty sets return
+numeric 0, never null. Responses use Cache-Control: no-store and contain no
+personal data, passwords, hashes or session details. No database mutation occurs.
+
+Anonymous/expired sessions return 401 UNAUTHORIZED; employee sessions return
+403 FORBIDDEN. Disabled admins return 403 ACCOUNT_DISABLED, and an account
+requiring password change returns 403 PASSWORD_CHANGE_REQUIRED. Role and account
+state are checked on each request using the existing auth middleware. Existing
+endpoints and JSON contracts are unchanged; no schema migration is needed.
