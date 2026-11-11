@@ -8,7 +8,7 @@
   <link rel="icon" href="data:,">
   <script src="js/theme-init.js?v=saved-previews-20261112-1"></script>
   <link rel="stylesheet" href="css/styles.css?v=saved-previews-20261112-1">
-  <script type="module" src="js/app.js?v=saved-previews-20261112-1"></script>
+  <script type="module" src="js/app.js?v=session-restore-20261112-1"></script>
 </head>
 <body>
   <a id="skip-to-content" class="skip-link" href="#app" data-i18n="skipContent"></a>
@@ -33,7 +33,11 @@
       <a href="#/admin" data-nav-role="admin" data-nav-page="tickets" data-i18n="adminQueue"></a>
       <a href="#/admin/users" data-nav-role="admin" data-nav-page="users" data-i18n="employees"></a>
     </nav>
-    <section id="login-screen" class="login-panel" aria-labelledby="login-title">
+    <div id="session-loading" class="login-panel" role="status">
+      <p class="muted" data-i18n="checkingSession">Проверка сессии…</p>
+      <noscript>Для работы страницы включите JavaScript. / Бетті пайдалану үшін JavaScript қосыңыз.</noscript>
+    </div>
+    <section id="login-screen" class="login-panel" aria-labelledby="login-title" hidden>
       <h1 id="login-title" data-i18n="loginTitle">Вход в систему</h1>
       <p class="muted" data-i18n="loginHint">Введите рабочий номер телефона и пароль.</p>
       <form id="login-form" novalidate autocomplete="off">
@@ -55,7 +59,6 @@
         <p id="login-status" class="status" role="status"></p>
       </form>
       <p class="access-note muted" data-i18n="accessNote">Нет доступа? Обратитесь к администратору</p>
-      <noscript>Для работы страницы включите JavaScript. / Бетті пайдалану үшін JavaScript қосыңыз.</noscript>
     </section>
     <section id="employee-screen" class="employee-panel" aria-labelledby="employee-title" hidden>
       <div class="page-header employee-profile">

@@ -165,6 +165,7 @@ form.addEventListener('submit', async (event) => {
 
 function route() {
   if (document.activeElement?.id === 'skip-to-content') document.activeElement.blur();
+  document.querySelector('#session-loading').hidden = !restoringSession;
   const changing = Boolean(user && passwordChangeRequired);
   const employee = !changing && user?.role === 'employee';
   const admin = !changing && user?.role === 'admin';
@@ -181,7 +182,7 @@ function route() {
   const viewing = Boolean(detailMatch);
   const target = changing ? '#/change-password' : managing ? '#/admin/users' : employee ? (creating ? '#/new-ticket' : viewing ? location.hash : '#/employee') : admin ? (viewing ? location.hash : '#/admin') : '#/login';
   if (!restoringSession && location.hash !== target) history.replaceState(null, '', target);
-  document.querySelector('#login-screen').hidden = Boolean(user);
+  document.querySelector('#login-screen').hidden = restoringSession || Boolean(user);
   document.querySelector('#change-password-screen').hidden = !changing;
   document.querySelector('#users-screen').hidden = !managing;
   document.querySelector('#employee-screen').hidden = !employee || creating || viewing;
