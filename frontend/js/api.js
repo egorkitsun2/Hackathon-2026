@@ -17,7 +17,8 @@ export async function request(path, options = {}) {
   try { result = await response.json(); } catch { throw new Error('API_UNAVAILABLE'); }
   if (!response.ok) {
     const code = result.error?.code ?? 'API_UNAVAILABLE';
-    if (['UNAUTHORIZED', 'ACCOUNT_DISABLED', 'PASSWORD_CHANGED'].includes(code)) {
+    if (['UNAUTHORIZED', 'ACCOUNT_DISABLED', 'PASSWORD_CHANGED'].includes(code)
+      && !(code === 'PASSWORD_CHANGED' && path.endsWith('/reset-password'))) {
       const event = new Event('session-ended');
       event.code = code;
       globalThis.window?.dispatchEvent(event);
@@ -45,6 +46,10 @@ export const createUser = ({ phone, full_name, department, position }) => reques
 });
 export const updateUser = (id, is_active) => request(`/admin/users/${id}`, {
   method: 'PATCH', body: JSON.stringify({ is_active }),
+});
+
+export const resetUserPassword = id => request(`/admin/users/${id}/reset-password`, {
+  method: 'POST', body: JSON.stringify({}),
 });
 
 export function normalizePhone(value) {

@@ -1,5 +1,5 @@
-import { changePassword, getUsers, createUser, updateUser, normalizePhone } from './api.js?v=attachments-20261111-3';
-import { t } from './i18n.js?v=attachments-20261111-3';
+import { changePassword, getUsers, createUser, updateUser, resetUserPassword, normalizePhone } from './api.js?v=password-reset-20261111-1';
+import { t } from './i18n.js?v=password-reset-20261111-1';
 
 const $ = id => document.querySelector(`#${id}`);
 let version = 0;
@@ -13,6 +13,33 @@ let pending = false;
 let changingUser = null;
 let errors = {};
 let notices = {};
+let resetTarget = null;
+let resetting = false;
+let resetVersion = 0;
+const resetDialog = $('reset-password-dialog');
+
+function clearReset() {
+  resetVersion++;
+  resetTarget = null;
+  $('reset-temporary-password').textContent = '';
+  $('reset-password-person').textContent = '';
+  $('reset-password-result').hidden = true;
+  notice('reset-copy-status');
+  resetDialog.close();
+}
+
+function confirmReset(user) {
+  if (active !== 'users' || user.role !== 'employee' || pending || resetting || changingUser !== null || loading || !$('user-created').hidden) return;
+  clearReset();
+  resetTarget = user;
+  $('reset-password-person').textContent = `${user.full_name} · ${user.phone}`;
+  $('reset-password-blocked').hidden = user.is_active;
+  $('reset-password-warning').hidden = false;
+  $('confirm-reset-password').hidden = false;
+  renderAccounts();
+  resetDialog.showModal();
+  $('close-reset-password').focus();
+}
 
 export function validatePassword(current, next, repeat) {
   const errors = {};
@@ -58,12 +85,17 @@ export function renderAccounts() {
     $(`${id}-error`).textContent = errors[id] ? t(errors[id]) : '';
     $(`${id}-error`).hidden = !errors[id];
   }
-  for (const id of ['change-password-status', 'create-user-status', 'users-status', 'users-action-status']) {
+  for (const id of ['change-password-status', 'create-user-status', 'users-status', 'users-action-status', 'reset-copy-status']) {
     const value = notices[id];
     $(id).textContent = value?.key ? t(value.key) + (value.seconds != null ? ` ${t('retrySeconds')} ${value.seconds}` : '') : '';
   }
   $('change-password-fields').disabled = pending;
-  $('create-user-fields').disabled = pending || !$('user-created').hidden;
+  $('create-user-fields').disabled = pending || resetting || !$('user-created').hidden;
+  $('confirm-reset-password').disabled = resetting;
+  $('close-reset-password').disabled = resetting;
+  $('close-reset-password').dataset.i18n = $('reset-password-result').hidden ? 'cancelReset' : 'closeResult';
+  $('close-reset-password').textContent = t($('close-reset-password').dataset.i18n);
+  $('reset-password-progress').textContent = resetting ? t('savingAccount') : '';
   $('users-list').replaceChildren();
   for (const user of result?.data ?? []) {
     const row = document.createElement('li');
@@ -77,8 +109,16 @@ export function renderAccounts() {
     const button = document.createElement('button');
     button.type = 'button'; button.className = 'secondary-button';
     button.textContent = t(user.is_active ? 'blockEmployee' : 'activateEmployee');
-    button.disabled = changingUser !== null || loading;
+    button.disabled = changingUser !== null || loading || pending || resetting;
     button.addEventListener('click', () => toggleUser(user));
+    if (user.role === 'employee') {
+      const reset = document.createElement('button');
+      reset.type = 'button'; reset.className = 'secondary-button';
+      reset.textContent = t('resetPassword');
+      reset.disabled = button.disabled || !$('user-created').hidden;
+      reset.addEventListener('click', () => confirmReset(user));
+      row.append(reset);
+    }
     row.append(button); $('users-list').append(row);
   }
   $('users-pagination').hidden = !result || result.pagination.total <= result.pagination.limit;
@@ -107,6 +147,7 @@ async function loadUsers() {
 }
 
 export function closeAccounts() {
+  clearReset(); resetting = false;
   version++; readId++; active = ''; onChanged = null; page = 1; result = null;
   pending = false; loading = false; changingUser = null; errors = {}; notices = {};
   $('change-password-form').reset(); $('create-user-form').reset(); clearSecret(); renderAccounts();
@@ -148,7 +189,7 @@ $('change-password-form').addEventListener('submit', async event => {
 
 $('create-user-form').addEventListener('submit', async event => {
   event.preventDefault();
-  if (pending || active !== 'users' || !$('user-created').hidden) return;
+  if (pending || resetting || active !== 'users' || !$('user-created').hidden) return;
   const values = Object.fromEntries(['phone', 'full_name', 'department', 'position'].map(key => [key, $(`user-${key}`).value]));
   errors = validateEmployee(values); notice('create-user-status');
   if (invalid()) return;
@@ -174,7 +215,7 @@ $('create-user-form').addEventListener('submit', async event => {
 });
 
 async function toggleUser(user) {
-  if (active !== 'users' || changingUser !== null || loading) return;
+  if (active !== 'users' || pending || resetting || changingUser !== null || loading) return;
   const generation = version;
   changingUser = user.id; notice('users-action-status', 'savingAccount'); renderAccounts();
   try {
@@ -195,3 +236,61 @@ $('close-user-created').addEventListener('click', () => { clearSecret(); renderA
 $('retry-users').addEventListener('click', () => { if (!loading && active === 'users') loadUsers(); });
 $('users-previous').addEventListener('click', () => { if (!loading && changingUser === null && page > 1) { page--; loadUsers(); } });
 $('users-next').addEventListener('click', () => { if (!loading && changingUser === null && result && page * result.pagination.limit < result.pagination.total) { page++; loadUsers(); } });
+
+$('close-reset-password').addEventListener('click', () => { if (!resetting) { clearReset(); renderAccounts(); } });
+resetDialog.addEventListener('cancel', event => { if (resetting) event.preventDefault(); });
+resetDialog.addEventListener('close', () => {
+  // Native Escape and route changes must erase the secret, including hidden DOM.
+  if (resetDialog.open) return;
+  resetVersion++; resetTarget = null;
+  $('reset-temporary-password').textContent = '';
+  $('reset-password-person').textContent = '';
+  $('reset-copy-status').textContent = '';
+  notice('reset-copy-status');
+  $('reset-password-result').hidden = true;
+});
+
+$('confirm-reset-password').addEventListener('click', async () => {
+  if (active !== 'users' || !resetTarget || resetting || !resetDialog.open || !$('reset-password-result').hidden) return;
+  const generation = version;
+  const operation = resetVersion;
+  const id = resetTarget.id;
+  resetting = true; notice('users-action-status'); renderAccounts();
+  try {
+    const response = await resetUserPassword(id);
+    if (generation !== version || operation !== resetVersion) return;
+    if (result) result.data = result.data.map(user => user.id === id ? response.data.user : user);
+    resetTarget = response.data.user;
+    $('reset-password-person').textContent = response.data.user.phone;
+    $('reset-temporary-password').textContent = response.data.temporary_password;
+    $('reset-password-blocked').hidden = response.data.user.is_active;
+    $('reset-password-warning').hidden = true;
+    $('reset-password-result').hidden = false;
+    $('confirm-reset-password').hidden = true;
+    $('copy-reset-password').focus();
+  } catch (error) {
+    if (generation !== version || operation !== resetVersion) return;
+    clearReset();
+    const key = ({ PASSWORD_CHANGED: 'resetPasswordConflict', INTERNAL_ERROR: 'resetPasswordFailed',
+      VALIDATION_ERROR: 'resetRequestInvalid', UNSUPPORTED_MEDIA_TYPE: 'resetRequestInvalid',
+    })[error.message];
+    notice('users-action-status', key || (uncertain(error) ? 'resetPasswordUncertain' : errorNotice(error)));
+    if (['NOT_FOUND', 'PASSWORD_CHANGED'].includes(error.message) || uncertain(error)) await loadUsers();
+    if (error.message === 'FORBIDDEN') globalThis.window?.dispatchEvent(new Event('session-refresh-requested'));
+  } finally {
+    if (generation === version) { resetting = false; renderAccounts(); }
+  }
+});
+
+$('copy-reset-password').addEventListener('click', async () => {
+  if (!resetDialog.open || $('reset-password-result').hidden) return;
+  const operation = resetVersion;
+  try {
+    if (!navigator.clipboard?.writeText) throw new Error('CLIPBOARD_UNAVAILABLE');
+    await navigator.clipboard.writeText($('reset-temporary-password').textContent);
+    if (operation === resetVersion) notice('reset-copy-status', 'passwordCopied');
+  } catch {
+    if (operation === resetVersion) notice('reset-copy-status', 'passwordCopyFailed');
+  }
+  if (operation === resetVersion) renderAccounts();
+});

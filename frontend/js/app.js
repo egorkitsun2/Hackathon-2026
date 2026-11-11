@@ -1,10 +1,10 @@
-import { openAccounts, closeAccounts, renderAccounts } from './accounts.js?v=attachments-20261111-3';
-import { login, logout, getMe, normalizePhone } from './api.js?v=attachments-20261111-3';
-import { setLanguage, t } from './i18n.js?v=attachments-20261111-3';
-import { openEmployee, closeEmployee, renderEmployee } from './employee.js?v=attachments-20261111-3';
-import { openNewTicket, resetNewTicket, renderNewTicket } from './new-ticket.js?v=attachments-20261111-3';
-import { openTicketDetails, closeTicketDetails, renderTicketDetails } from './ticket.js?v=attachments-20261111-3';
-import { openAdminQueue, closeAdminQueue, renderAdminQueue } from './admin.js?v=attachments-20261111-3';
+import { openAccounts, closeAccounts, renderAccounts } from './accounts.js?v=password-reset-20261111-1';
+import { login, logout, getMe, normalizePhone } from './api.js?v=password-reset-20261111-1';
+import { setLanguage, t } from './i18n.js?v=password-reset-20261111-1';
+import { openEmployee, closeEmployee, renderEmployee } from './employee.js?v=password-reset-20261111-1';
+import { openNewTicket, resetNewTicket, renderNewTicket } from './new-ticket.js?v=password-reset-20261111-1';
+import { openTicketDetails, closeTicketDetails, renderTicketDetails } from './ticket.js?v=password-reset-20261111-1';
+import { openAdminQueue, closeAdminQueue, renderAdminQueue } from './admin.js?v=password-reset-20261111-1';
 
 const form = document.querySelector('#login-form');
 const phone = document.querySelector('#phone');
@@ -216,6 +216,7 @@ async function restoreSession() {
   }
 }
 window.addEventListener('hashchange', route);
+window.addEventListener('session-refresh-requested', restoreSession);
 setLanguage('ru');
 renderPasswordToggle();
 route();

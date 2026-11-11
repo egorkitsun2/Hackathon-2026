@@ -135,3 +135,9 @@ h2 { margin: 0; font-size: var(--brand-size); }
 .stat-card { min-width: 0; padding: var(--space-md); border: 1px solid var(--color-border); border-radius: var(--radius); background: var(--color-inset); overflow-wrap: anywhere; }
 .stat-card dt { color: var(--color-muted); font-size: var(--small-size); }
 .stat-card dd { margin: var(--space-xs) 0 0; font-size: var(--heading-size); font-weight: 600; }
+
+#reset-password-dialog { width: min(var(--form-width), calc(100% - 2 * var(--space-md))); max-height: calc(100dvh - 2 * var(--space-md)); overflow-y: auto; padding: var(--block-padding); border: 1px solid var(--color-border); border-radius: var(--block-radius); background: var(--color-surface); color: var(--color-text); }
+#reset-password-dialog::backdrop { background: rgb(0 0 0 / 40%); }
+.reset-dialog-actions { display: flex; flex-wrap: wrap; gap: var(--space-sm); margin-top: var(--space-md); }
+.reset-dialog-actions .primary-button { width: auto; }
+#reset-password-result { margin-top: var(--space-md); }
