@@ -1,6 +1,6 @@
 # Team Voice backend
 
-Hackathon MVP v0.3 stage 1: TypeScript + Hono on Node.js, SQLite, Argon2id and server-side
+Hackathon MVP v0.4: TypeScript + Hono on Node.js, SQLite, Argon2id and server-side
 cookie sessions. The API and JSON shapes are defined in
 [`docs/api-contract.md`](../docs/api-contract.md). No Cloudflare account,
 Workers subscription or cloud resources are required.
@@ -87,6 +87,7 @@ Set environment variables in the shell before launching. Commands work from
 | APP_ORIGIN | http://localhost:PORT in development | Exact trusted browser origin, no trailing slash |
 | NODE_ENV | development behavior | Set production to require HTTPS origin and Secure cookies |
 | FRONTEND_DIR | unset | Optional absolute path to an existing public frontend build containing index.html |
+| ATTACHMENTS_DIR | DATABASE_PATH + .attachments | Dedicated private attachment storage, outside FRONTEND_DIR |
 
 The server automatically applies pending local migrations before listening.
 `db:migrate` is also available as an explicit preparation step. It does not
@@ -158,9 +159,9 @@ inserts, and concurrent status changes. Tests do not use the demo database or
 commit any test-account credentials.
 
 Scope: nine original endpoints plus employee provisioning, activation/blocking,
-password changes and the read-only admin dashboard counters.
-No public registration, account-management UI, invitations,
-Telegram, uploads, analytics, ticket deletion, editing or reopening.
+password changes, read-only admin dashboard counters and private ticket attachments.
+No public registration or invitations,
+Telegram, analytics, ticket deletion, editing or reopening.
 
 ## First administrator and employee management (v0.3)
 
@@ -203,11 +204,11 @@ retaining all accounts, tickets, histories and sessions. `npm.cmd run db:migrate
 and server startup apply pending migrations. Back up an existing SQLite database
 with SQLite's backup API before upgrading a live local database.
 
-**Frontend integration remains a separate stage.** This change does not modify
-frontend files. The current frontend has no employee-management or mandatory
-password-change forms; these new flows are usable through API clients until
-that UI is added. Existing demo accounts and ordinary ticket screens continue
-to work. Automated tests exercise the complete empty-database account lifecycle.
+Account-management and password-change UI are maintained in the parallel
+frontend work. Existing ticket/account frontend scenarios are covered by the
+integration tests; this backend stage does not modify frontend files. Attachment
+UI still needs the separate handoff below. Automated backend tests exercise the
+complete empty-database account lifecycle.
 
 The frontend handoff for Sharapat is in
 [`docs/frontend-v03-handoff.md`](../docs/frontend-v03-handoff.md).
@@ -216,3 +217,34 @@ The frontend handoff for Sharapat is in
 and tickets (total/new/in_review/resolved/rejected). It requires an administrator
 session and uses the existing tables without migrations. The exact response is
 specified in the API contract; no frontend changes are included.
+
+## Ticket attachments (v0.4)
+
+Run `npm.cmd run db:migrate` or restart the server to apply migration 0004. It
+adds only attachment metadata/index; existing records are retained. The default
+storage is `data/team-voice.sqlite.attachments/{tmp,files}` next to the default
+database. Each custom DATABASE_PATH gets its own `<database-file>.attachments/`
+directory unless ATTACHMENTS_DIR is set. This prevents separate database files
+in the same parent directory from sharing their default cleanup namespace. Keep it private, Git-ignored and outside the frontend. Startup rejects
+public/private overlaps. On Windows use private directory ACLs: mode 0600/0700
+alone is not an ACL configuration. Back up SQLite and attachments as one set
+while stopped, and monitor persistent disk capacity.
+
+POST `/api/v1/tickets/:id/attachments` accepts one multipart `file` (JPG/JPEG,
+PNG, WebP, PDF), max 5 MiB, at most three per ticket. Only the author in status
+new can upload. GET `/api/v1/tickets/:id` includes metadata in attachments[];
+GET `/api/v1/tickets/:id/attachments/:attachmentId` streams a protected download
+for the author/admin. JSON bodies still have the 32 KiB cap. Upload body cap is
+5 MiB + 64 KiB; backpressure, four concurrent streams and a 120-second deadline
+bound live uploads. The API contract defines exact responses/errors.
+
+Failures remove temporary files after closing writers. Crash leftovers with
+server-generated names, older than 24h and unreferenced by SQLite, are cleaned
+at startup and during subsequent upload maintenance. Correctly committed files
+are retained. Never pair an unrelated database with an existing storage folder.
+Signature detection is not antivirus or deep file validation; documents are
+served as downloads with nosniff/sandbox, not public assets. No thumbnails,
+resumable uploads, editing/deletion or external storage is implemented.
+
+Frontend implementation is separate; see
+[`docs/frontend-attachments-handoff.md`](../docs/frontend-attachments-handoff.md).
