@@ -1,6 +1,6 @@
-import { getMyTickets } from './api.js?v=admin-tabs-20261112-1';
-import { categoryLabel } from './routing.js?v=admin-tabs-20261112-1';
-import { t } from './i18n.js?v=admin-tabs-20261112-1';
+import { getMyTickets } from './api.js?v=dynamic-categories-20261113-1';
+import { categoryLabel } from './routing.js?v=dynamic-categories-20261113-1';
+import { t } from './i18n.js?v=dynamic-categories-20261113-1';
 
 const screen = document.querySelector('#employee-screen');
 const list = document.querySelector('#ticket-list');

@@ -1,6 +1,6 @@
-import { createTicket, uploadAttachment, getTicket } from './api.js?v=admin-tabs-20261112-1';
-import { validateAttachment } from './attachment-validation.js?v=admin-tabs-20261112-1';
-import { t } from './i18n.js?v=admin-tabs-20261112-1';
+import { createTicket, uploadAttachment, getTicket, getCategories } from './api.js?v=dynamic-categories-20261113-1';
+import { validateAttachment } from './attachment-validation.js?v=dynamic-categories-20261113-1';
+import { t } from './i18n.js?v=dynamic-categories-20261113-1';
 
 const form = document.querySelector('#new-ticket-form');
 const fields = document.querySelector('#ticket-fields');
@@ -27,6 +27,29 @@ let previewRevision = 0;
 let renderedPreviewKey = '';
 const previewList = document.querySelector('#ticket-previews');
 let writingHelpKey = '';
+let categories = [], categoriesState = '', categoriesVersion = 0, categoriesLoaded = false;
+function renderCategories() {
+  const selected = inputs.category.value;
+  inputs.category.replaceChildren();
+  for (const entry of [{ code: '', name_ru: t('chooseDirection'), name_kz: t('chooseDirection') }, ...categories]) {
+    const option = document.createElement('option'); option.value = entry.code;
+    option.textContent = entry[document.documentElement.lang === 'kk' ? 'name_kz' : 'name_ru']; inputs.category.append(option);
+  }
+  inputs.category.value = categories.some(item => item.code === selected) ? selected : '';
+  inputs.category.disabled = pending || !categoriesLoaded;
+  document.querySelector('#ticket-categories-status').textContent = categoriesState ? t(categoriesState) : '';
+  document.querySelector('#retry-ticket-categories').hidden = categoriesState !== 'categoriesLoadError';
+}
+async function loadCategories() {
+  const revision = ++categoriesVersion;
+  categoriesLoaded = false; categoriesState = 'loadingDirections'; renderCategories();
+  try {
+    const response = await getCategories();
+    if (revision !== categoriesVersion || !previewOpen) return;
+    categories = response.data.filter(item => item.is_active); categoriesLoaded = true; categoriesState = '';
+  } catch { if (revision === categoriesVersion) categoriesState = 'categoriesLoadError'; }
+  finally { if (revision === categoriesVersion) renderCategories(); }
+}
 const writingPrompts = {
   problem: ['helpWhatHappened', 'helpWhereWhen', 'helpWorkImpact', 'helpSolution'],
   suggestion: ['helpSuggestionChange', 'helpSuggestionBenefit', 'helpSuggestionResult'],
@@ -115,7 +138,7 @@ export const ticketTextLength = value => Array.from(value.trim()).length;
 export function validateTicket(values) {
   const errors = {};
   if (!['problem', 'suggestion', 'complaint', 'gratitude'].includes(values.type)) errors.type = 'typeRequired';
-  if (!['it', 'procurement', 'general'].includes(values.category)) errors.category = 'directionRequired';
+  if (!/^[a-z][a-z0-9_]{1,31}$/.test(values.category ?? '')) errors.category = 'directionRequired';
   for (const [name, min, max] of [['title', 5, 120], ['description', 10, 4000]]) {
     const length = ticketTextLength(values[name]);
     if (length < min || length > max) errors[name] = name === 'title' ? 'titleLengthError' : 'descriptionLengthError';
@@ -124,6 +147,7 @@ export function validateTicket(values) {
 }
 
 export function renderNewTicket() {
+  renderCategories();
   renderWritingHelp();
   renderPreviews();
   for (const [name, maximum] of [['title', 120], ['description', 4000]]) {
@@ -183,9 +207,11 @@ export function openNewTicket() {
   previewOpen = true;
   if (created && !pending) resetNewTicket();
   renderNewTicket();
+  loadCategories();
 }
 
 export function closeNewTicket() {
+  categoriesVersion++; categoriesLoaded = false;
   previewOpen = false;
   releasePreviewURLs(); renderedPreviewKey = '';
   previewList.replaceChildren(); previewList.hidden = true;
@@ -207,6 +233,7 @@ form.addEventListener('submit', async event => {
   if (pending || created) return;
   const values = Object.fromEntries(Object.entries(inputs).map(([name, input]) => [name, input.value]));
   errors = validateTicket(values);
+  if (!categoriesLoaded || !categories.some(item => item.code === values.category)) errors.category = 'directionRequired';
   const files = attachments.map(entry => entry.file);
   filesError = filesError || (files.length > 3 ? 'newTicketFilesLimit' : files.map(validateAttachment).find(Boolean) || '');
   statusKey = '';
@@ -260,6 +287,9 @@ form.addEventListener('submit', async event => {
         if (version !== currentVersion) return;
         uploaded = response.data.attachments?.length ?? uploaded;
       } catch { /* The detail link offers a manual refresh; never replay the POST. */ }
+    } else if (error.message === 'CATEGORY_ARCHIVED') {
+      errors.category = 'categoryArchivedError'; statusKey = 'categoryArchivedError';
+      await loadCategories();
     } else if (error.message === 'VALIDATION_ERROR') {
       for (const name of Object.keys(inputs)) {
         if (error.details?.[name]) errors[name] = ({ type: 'typeRequired', category: 'directionRequired', title: 'titleLengthError', description: 'descriptionLengthError' })[name];
@@ -295,6 +325,7 @@ filesInput.addEventListener('change', () => {
   renderNewTicket();
 });
 document.querySelector('#choose-ticket-files').addEventListener('click', () => filesInput.click());
+document.querySelector('#retry-ticket-categories').addEventListener('click', () => { if (!pending && previewOpen) loadCategories(); });
 document.querySelector('#clear-ticket-files').addEventListener('click', () => {
   if (pending) return;
   clearAttachments(); filesError = ''; renderNewTicket();

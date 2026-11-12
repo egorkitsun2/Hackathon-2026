@@ -29,12 +29,13 @@ function harness(createTicket = async () => ({ data: { id: 42 } })) {
     });
     return elements.get(selector);
   }
-  const context = vm.createContext({ document: { querySelector: get, createElement: node }, createTicket, URL: { createObjectURL(file) { const url = `blob:qa-${urls.created.length}`; urls.created.push({ file, url }); return url; }, revokeObjectURL(url) { urls.revoked.push(url); } }, TextEncoder, AbortController, uploadAttachment: async () => ({}), getTicket: async () => ({ data: { attachments: [] } }), t: key => `${language}:${key}` });
+  const context = vm.createContext({ document: { querySelector: get, createElement: node, documentElement: { lang: 'ru' } }, getCategories: async () => ({ data: [{ code: 'it', name_ru: 'IT', name_kz: 'IT', is_active: true }, { code: 'procurement', name_ru: 'Purchasing', name_kz: 'Satyp alu', is_active: true }] }), createTicket, URL: { createObjectURL(file) { const url = `blob:qa-${urls.created.length}`; urls.created.push({ file, url }); return url; }, revokeObjectURL(url) { urls.revoked.push(url); } }, TextEncoder, AbortController, uploadAttachment: async () => ({}), getTicket: async () => ({ data: { attachments: [] } }), t: key => `${language}:${key}` });
   vm.runInContext(source, context);
   function fill(values = {}) {
     for (const [key, value] of Object.entries({ type: 'problem', category: 'it', title: ' Test title ', description: ' A valid description ', ...values })) get(`#ticket-${key}`).value = value;
   }
   context.openNewTicket();
+  vm.runInContext("categories = [{ code: 'it', name_ru: 'IT', name_kz: 'IT', is_active: true }, { code: 'procurement', name_ru: 'Purchasing', name_kz: 'Satyp alu', is_active: true }]; categoriesLoaded = true; categoriesState = '';", context);
   return { context, get, fill, urls, focused: () => focused, setLanguage: value => { language = value; }, submit: () => get('#new-ticket-form').events.submit({ preventDefault() {} }) };
 }
 
@@ -293,4 +294,31 @@ test('direction is required and unsupported or arbitrary assignment inputs are n
   h.fill({category:'procurement'});h.setLanguage('kk');h.context.renderNewTicket();
   assert.equal(h.get('#ticket-category').value,'procurement');await h.submit();assert.equal(sent.category,'procurement');
   assert.equal('assigned_to' in sent,false);assert.equal('manager_id' in sent,false);
+});
+
+test('category loading failure prevents creation, retry preserves text and accepts a new backend code', async () => {
+  let calls = 0;
+  const h = harness(async () => { calls++; return { data: { id: 42 } }; });
+  h.fill();
+  h.context.getCategories = async () => { throw new Error('NETWORK_ERROR'); };
+  h.context.openNewTicket(); await new Promise(resolve => setImmediate(resolve));
+  assert.equal(h.get('#ticket-category').disabled, true);
+  assert.equal(h.get('#ticket-categories-status').textContent, 'ru:categoriesLoadError');
+  await h.submit(); assert.equal(calls, 0); assert.equal(h.get('#ticket-title').value, ' Test title ');
+  h.context.getCategories = async () => ({ data: [{ code: 'carpenter', name_ru: 'Carpenter', name_kz: 'Agash', is_active: true }, { code: 'archived', name_ru: 'Old', name_kz: 'Old', is_active: false }] });
+  h.get('#retry-ticket-categories').events.click(); await new Promise(resolve => setImmediate(resolve));
+  assert.equal(h.get('#ticket-category').children.some(option => option.value === 'archived'), false);
+  h.fill({ category: 'carpenter' }); h.setLanguage('kk'); h.context.renderNewTicket();
+  assert.equal(h.get('#ticket-category').value, 'carpenter'); await h.submit(); assert.equal(calls, 1);
+});
+
+test('archived-category conflict refreshes options without recreating a ticket or losing the draft', async () => {
+  let calls = 0;
+  const h = harness(async () => { calls++; throw new Error('CATEGORY_ARCHIVED'); });
+  h.fill();
+  h.context.getCategories = async () => ({ data: [] });
+  await h.submit();
+  assert.equal(calls, 1); assert.equal(h.get('#ticket-title').value, ' Test title ');
+  assert.equal(h.get('#ticket-category').value, '');
+  assert.equal(h.get('#ticket-category-error').textContent, 'ru:categoryArchivedError');
 });

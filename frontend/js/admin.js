@@ -1,6 +1,6 @@
-import { getAdminTickets, getAdminStats, getManagers, getManagerTickets } from './api.js?v=admin-tabs-20261112-1';
-import { categoryLabel, managerLabel } from './routing.js?v=admin-tabs-20261112-1';
-import { t } from './i18n.js?v=admin-tabs-20261112-1';
+import { getAdminTickets, getAdminStats, getManagers, getManagerTickets } from './api.js?v=dynamic-categories-20261113-1';
+import { categoryLabel, managerLabel } from './routing.js?v=dynamic-categories-20261113-1';
+import { t } from './i18n.js?v=dynamic-categories-20261113-1';
 
 const screen = document.querySelector('#admin-screen');
 const filter = document.querySelector('#admin-status-filter');
@@ -72,7 +72,10 @@ function textElement(tag, text, className) {
 export function renderAdminQueue() {
   const manager = profile?.role === 'manager';
   document.querySelector('#admin-stats-panel').hidden = manager;
+  document.querySelector('#admin-queue-flags').hidden = !profile || manager;
   document.querySelector('#admin-unassigned-filter-label').hidden = !profile || manager;
+  document.querySelector('#admin-needs-reassignment-filter-label').hidden = !profile || manager;
+  document.querySelector('#admin-reassignment-hint').hidden = !profile || manager;
   for (const [selector, key] of [['#admin-title', manager ? 'managerTitle' : 'adminTitle'], ['#admin-queue-heading', manager ? 'managerQueue' : 'adminQueue']]) {
     const heading = document.querySelector(selector); heading.dataset.i18n = key; heading.textContent = t(key);
   }
@@ -87,9 +90,12 @@ export function renderAdminQueue() {
   if (!result) return;
   for (const ticket of result.data) {
     const row = document.createElement('tr');
+    const needsReassignment = !manager && ticket.needs_reassignment === true;
+    row.dataset.needsReassignment = String(needsReassignment);
     const summary = document.createElement('th');
     summary.scope = 'row';
     summary.append(textElement('p', `${t(ticket.type)} · № ${ticket.id}`, 'hint'), textElement('p', ticket.title, 'queue-ticket-title'));
+    if (needsReassignment) summary.append(textElement('p', t('needsReassignmentBadge'), 'ticket-status reassignment-badge'));
     const author = document.createElement('td');
     author.dataset.label = t('ticketAuthor');
     if (!manager && ticket.author) author.append(textElement('p', ticket.author.full_name), textElement('p', `${ticket.author.department} · ${ticket.author.position}`, 'hint'));
@@ -124,12 +130,16 @@ async function loadQueue() {
   renderAdminQueue();
   try {
     if (!queueReader) throw new Error('ROUTING_UNAVAILABLE');
-    const response = await queueReader({ page, status: filter.value, ...(profile?.role === 'admin' && document.querySelector('#admin-unassigned-filter').checked ? { unassigned: true } : {}) });
+    const adminFilters = profile?.role === 'admin' ? {
+      ...(document.querySelector('#admin-unassigned-filter').checked ? { unassigned: true } : {}),
+      ...(document.querySelector('#admin-needs-reassignment-filter').checked ? { needs_reassignment: true } : {}),
+    } : {};
+    const response = await queueReader({ page, status: filter.value, ...adminFilters });
     if (id !== requestId) return;
     result = response;
     const lastPage = Math.max(1, Math.ceil(result.pagination.total / result.pagination.limit));
     if (page > lastPage) { page = lastPage; await loadQueue(); return; }
-    state = response.data.length ? '' : filter.value ? 'noFilteredTickets' : profile?.role === 'manager' ? 'noManagerTickets' : 'noAdminTickets';
+    state = response.data.length ? '' : (filter.value || Object.keys(adminFilters).length) ? 'noFilteredTickets' : profile?.role === 'manager' ? 'noManagerTickets' : 'noAdminTickets';
   } catch (error) {
     if (id !== requestId) return;
     state = error.message === 'ROUTING_UNAVAILABLE' ? 'routingUnavailable' : error.message === 'FORBIDDEN' ? 'adminForbidden' : 'adminQueueError';
@@ -167,13 +177,14 @@ export function closeAdminQueue(reset = false) {
   directoryRequestId++; managers = [];
   queueReader = null;
   state = '';
-  if (reset) { page = 1; filter.value = ''; document.querySelector('#admin-unassigned-filter').checked = false; }
+  if (reset) { page = 1; filter.value = ''; document.querySelector('#admin-unassigned-filter').checked = false; document.querySelector('#admin-needs-reassignment-filter').checked = false; }
   screen.removeAttribute('aria-busy');
   renderAdminQueue();
 }
 
 filter.addEventListener('change', () => { page = 1; loadQueue(); });
 document.querySelector('#admin-unassigned-filter').addEventListener('change', () => { if (profile?.role === 'admin') { page = 1; loadQueue(); } });
+document.querySelector('#admin-needs-reassignment-filter').addEventListener('change', () => { if (profile?.role === 'admin') { page = 1; loadQueue(); } });
 retry.addEventListener('click', loadQueue);
 previous.addEventListener('click', () => { if (page > 1) { page--; loadQueue(); } });
 next.addEventListener('click', () => {

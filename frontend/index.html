@@ -6,9 +6,9 @@
   <meta name="color-scheme" content="light dark">
   <title>Голос команды</title>
   <link rel="icon" href="data:,">
-  <script src="js/theme-init.js?v=admin-tabs-20261112-1"></script>
-  <link rel="stylesheet" href="css/styles.css?v=admin-tabs-20261112-1">
-  <script type="module" src="js/app.js?v=admin-tabs-20261112-1"></script>
+  <script src="js/theme-init.js?v=dynamic-categories-20261113-1"></script>
+  <link rel="stylesheet" href="css/styles.css?v=dynamic-categories-20261113-1">
+  <script type="module" src="js/app.js?v=dynamic-categories-20261113-1"></script>
 </head>
 <body>
   <a id="skip-to-content" class="skip-link" href="#app" data-i18n="skipContent"></a>
@@ -105,11 +105,10 @@
               <label for="ticket-category" data-i18n="ticketDirection"></label>
               <select id="ticket-category" name="category" required aria-describedby="ticket-category-hint ticket-category-error">
                 <option value="" data-i18n="chooseDirection"></option>
-                <option value="it" data-i18n="directionIT"></option>
-                <option value="procurement" data-i18n="directionPurchasing"></option>
-                <option value="general" data-i18n="directionGeneral"></option>
               </select>
               <p id="ticket-category-hint" class="hint" data-i18n="routingHint"></p>
+              <p id="ticket-categories-status" class="hint" role="status"></p>
+              <button id="retry-ticket-categories" class="secondary-button" type="button" data-i18n="retry" hidden></button>
               <p id="ticket-category-error" class="field-error" aria-live="polite" hidden></p>
             </div>
             <div class="field">
@@ -275,10 +274,17 @@
           </select>
         </div>
         </div>
+        <div id="admin-queue-flags" class="queue-flags" hidden>
+        <label id="admin-needs-reassignment-filter-label" class="checkbox-field" hidden>
+          <input id="admin-needs-reassignment-filter" type="checkbox" aria-describedby="admin-reassignment-hint">
+          <span data-i18n="needsReassignment"></span>
+        </label>
         <label id="admin-unassigned-filter-label" class="checkbox-field" hidden>
           <input id="admin-unassigned-filter" type="checkbox">
           <span data-i18n="onlyUnassigned"></span>
         </label>
+        </div>
+        <p id="admin-reassignment-hint" class="hint" data-i18n="reassignmentFilterHint" hidden></p>
         <p id="admin-queue-status" class="status" role="status"></p>
         <button id="retry-admin-queue" class="secondary-button" type="button" data-i18n="retry" hidden>Повторить</button>
         <table id="admin-ticket-table" class="admin-ticket-table" hidden>
@@ -358,9 +364,30 @@
         <p class="hint" data-i18n="directionManagersHint"></p>
         <p id="category-managers-status" class="status" role="status"></p>
         <button id="retry-category-managers" class="secondary-button" type="button" data-i18n="retry" hidden></button>
+        <form id="category-create-form" class="category-create" novalidate>
+          <h3 data-i18n="createDirection"></h3>
+          <fieldset id="category-create-fields">
+            <div class="field"><label for="category-code" data-i18n="categoryCode"></label><input id="category-code" autocomplete="off" required aria-describedby="category-code-hint category-create-error"><p id="category-code-hint" class="hint" data-i18n="categoryCodeHint"></p></div>
+            <div class="field"><label for="category-name_ru" data-i18n="categoryNameRu"></label><input id="category-name_ru" required aria-describedby="category-create-error"></div>
+            <div class="field"><label for="category-name_kz" data-i18n="categoryNameKz"></label><input id="category-name_kz" required aria-describedby="category-create-error"></div>
+            <div class="field"><label for="category-create-manager" data-i18n="currentResponsible"></label><select id="category-create-manager"></select></div>
+            <p id="category-create-error" class="field-error" role="alert"></p>
+            <button class="primary-button" type="submit" data-i18n="createDirection"></button>
+          </fieldset>
+        </form>
+        <label class="category-archive-filter"><input id="show-archived-categories" type="checkbox"><span data-i18n="showArchivedDirections"></span></label>
         <div id="category-managers-list" class="routing-settings"></div>
       </section>
     </section>
+    <dialog id="archive-category-dialog" class="result-dialog" aria-labelledby="archive-category-title" aria-describedby="archive-category-warning">
+      <h2 id="archive-category-title" data-i18n="archiveDirection"></h2>
+      <p id="archive-category-name"></p>
+      <p id="archive-category-warning" class="hint" data-i18n="archiveDirectionWarning"></p>
+      <div class="reset-dialog-actions">
+        <button id="cancel-archive-category" type="button" class="secondary-button" data-i18n="cancelReset"></button>
+        <button id="confirm-archive-category" type="button" class="secondary-button danger-button" data-i18n="archiveDirection"></button>
+      </div>
+    </dialog>
     <dialog id="block-manager-dialog" class="result-dialog" aria-labelledby="block-manager-title" aria-describedby="block-manager-warning">
       <h2 id="block-manager-title" data-i18n="blockManagerTitle"></h2>
       <p id="block-manager-person" class="employee-name"></p>

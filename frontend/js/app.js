@@ -1,12 +1,12 @@
-import { openRouting, closeRouting, renderRouting } from './routing.js?v=admin-tabs-20261112-1';
-import { openAccounts, closeAccounts, renderAccounts } from './accounts.js?v=admin-tabs-20261112-1';
-import { initTheme, renderThemeToggle } from './theme.js?v=admin-tabs-20261112-1';
-import { login, logout, getMe, normalizePhone, invalidateSessionRequests } from './api.js?v=admin-tabs-20261112-1';
-import { setLanguage, t } from './i18n.js?v=admin-tabs-20261112-1';
-import { openEmployee, closeEmployee, renderEmployee } from './employee.js?v=admin-tabs-20261112-1';
-import { openNewTicket, closeNewTicket, resetNewTicket, renderNewTicket } from './new-ticket.js?v=admin-tabs-20261112-1';
-import { openTicketDetails, openManagerTicketDetails, closeTicketDetails, renderTicketDetails } from './ticket.js?v=admin-tabs-20261112-1';
-import { openAdminQueue, openManagerQueue, closeAdminQueue, renderAdminQueue } from './admin.js?v=admin-tabs-20261112-1';
+import { openRouting, closeRouting, renderRouting, loadCategoryNames, clearCategoryNames } from './routing.js?v=dynamic-categories-20261113-1';
+import { openAccounts, closeAccounts, renderAccounts } from './accounts.js?v=dynamic-categories-20261113-1';
+import { initTheme, renderThemeToggle } from './theme.js?v=dynamic-categories-20261113-1';
+import { login, logout, getMe, normalizePhone, invalidateSessionRequests } from './api.js?v=dynamic-categories-20261113-1';
+import { setLanguage, t } from './i18n.js?v=dynamic-categories-20261113-1';
+import { openEmployee, closeEmployee, renderEmployee } from './employee.js?v=dynamic-categories-20261113-1';
+import { openNewTicket, closeNewTicket, resetNewTicket, renderNewTicket } from './new-ticket.js?v=dynamic-categories-20261113-1';
+import { openTicketDetails, openManagerTicketDetails, closeTicketDetails, renderTicketDetails } from './ticket.js?v=dynamic-categories-20261113-1';
+import { openAdminQueue, openManagerQueue, closeAdminQueue, renderAdminQueue } from './admin.js?v=dynamic-categories-20261113-1';
 
 const form = document.querySelector('#login-form');
 const phone = document.querySelector('#phone');
@@ -201,6 +201,12 @@ function route() {
   closeEmployee(!employee);
   closeTicketDetails();
   closeAdminQueue(!staff);
+  if (user && !passwordChangeRequired && !configuring) {
+    const version = sessionVersion;
+    loadCategoryNames(user.role === 'admin').then(() => {
+      if (version === sessionVersion) { renderEmployee(); renderAdminQueue(); renderTicketDetails(); }
+    }).catch(() => { /* Ticket responses retain their own category names; never block access to tickets. */ });
+  }
   if (configuring) openRouting(); else closeRouting();
   if (configuring) { resetNewTicket(); closeAccounts(); return; }
   if (changing || managing) {
@@ -237,6 +243,7 @@ window.addEventListener('session-ended', (event) => {
   sessionVersion++;
   invalidateSessionRequests();
   user = null;
+  clearCategoryNames();
   resetNewTicket();
   route();
   showStatus(status, event?.code === 'ACCOUNT_DISABLED' ? 'accountDisabled' : 'sessionExpired');
@@ -252,6 +259,7 @@ logoutButton.addEventListener('click', async () => {
     await logout();
     sessionVersion++;
     user = null;
+    clearCategoryNames();
     resetNewTicket();
     route();
     showStatus(status);
