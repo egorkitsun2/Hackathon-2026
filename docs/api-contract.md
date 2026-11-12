@@ -1,9 +1,9 @@
-# Team Voice — API contract v0.4
+# Team Voice — API contract v0.5
 
-Status: MVP v0.4 attachments on Node.js + Hono and SQLite.
-Existing routes retain their fields; ticket details additionally return attachments.
+Status: MVP v0.5 manager routing on Node.js + Hono and SQLite.
+Existing routes retain their fields; all ticket views additionally return category and assigned_to.
 Existing account lifecycle and admin statistics routes remain unchanged.
-An additive admin-only employee password reset is documented below.
+Account management and password resets now support employees and managers.
 
 Base path: /api/v1. Request and response bodies are JSON except multipart attachment
 uploads and binary downloads documented below. Dates are UTC ISO 8601
@@ -13,7 +13,8 @@ are translated on the frontend (RU/KZ); API enums are language-neutral.
 ## Access roles
 
 - employee: creates tickets, reads only own tickets and their histories.
-- admin: reads all tickets, sees their authors, changes status and adds
+- manager: reads and processes only tickets currently assigned to that manager.
+- admin: manages routing, assignments and staff accounts, reads all tickets, sees their authors, changes status and adds
   a decision comment.
 - Anonymous tickets and public registration are outside MVP.
 
@@ -27,16 +28,22 @@ are translated on the frontend (RU/KZ); API enums are language-neutral.
 | GET | /auth/me | Session | 200 |
 | GET | /tickets | Employee | 200 |
 | POST | /tickets | Employee | 201 |
-| GET | /tickets/:id | Author or admin | 200 |
+| GET | /tickets/:id | Author, admin or assigned manager | 200 |
 | POST | /tickets/:id/attachments | Ticket author, status new | 201 |
-| GET | /tickets/:id/attachments/:attachmentId | Author or admin | 200 (binary) |
+| GET | /tickets/:id/attachments/:attachmentId | Author, admin or assigned manager | 200 (binary) |
 | GET | /admin/tickets | Admin | 200 |
 | PATCH | /admin/tickets/:id | Admin | 200 |
 | POST | /admin/users | Admin | 201 |
 | GET | /admin/users | Admin | 200 |
 | GET | /admin/stats | Admin | 200 |
+| GET | /categories | Session | 200 |
+| GET | /admin/routing | Admin | 200 |
+| PATCH | /admin/routing/:category | Admin | 200 |
+| PATCH | /admin/tickets/:id/assignment | Admin | 200 |
+| GET | /manager/tickets | Manager | 200 |
+| PATCH | /manager/tickets/:id | Assigned manager | 200 |
 | PATCH | /admin/users/:id | Admin | 200 |
-| POST | /admin/users/:id/reset-password | Admin, employee target only | 200 |
+| POST | /admin/users/:id/reset-password | Admin, employee/manager target only | 200 |
 | POST | /auth/change-password | Session, including temporary-password sessions | 200 |
 
 The admin and employee detail screens use **the same**
@@ -111,7 +118,7 @@ type: problem | suggestion | complaint | gratitude
 status: new | in_review | resolved | rejected
 
 Status flow: new -> in_review -> resolved OR rejected.
-Both terminal transitions require an admin comment. No reopen in MVP.
+Both terminal transitions require a comment from an admin or the assigned manager. No reopen in MVP.
 
 Ticket input:
 - type: one of the four types
@@ -138,6 +145,8 @@ POST /tickets request:
     "title": "Не работает сканер",
     "description": "На складе перестал работать сканер штрихкодов.",
     "status": "new",
+    "category": "general",
+    "assigned_to": null,
     "created_at": "2026-11-10T09:30:00.000Z",
     "updated_at": "2026-11-10T09:30:00.000Z"
   }
@@ -148,7 +157,7 @@ The backend derives author_id from the current session. Do not send user_id
 or role in a create request.
 
 GET /tickets?page=1&limit=20 returns only the current employee's
-tickets as data array. Each item includes id, type, title, status,
+tickets as data array. Each item includes id, type, title, status, category, assigned_to,
 created_at, updated_at; there is no description or author in the list.
 
 ~~~json
@@ -159,6 +168,8 @@ created_at, updated_at; there is no description or author in the list.
       "type": "problem",
       "title": "Не работает сканер",
       "status": "new",
+      "category": "general",
+      "assigned_to": null,
       "created_at": "2026-11-10T09:30:00.000Z",
       "updated_at": "2026-11-10T09:30:00.000Z"
     }
@@ -179,6 +190,8 @@ GET /tickets/:id response for an ADMIN:
     "title": "Не работает сканер",
     "description": "На складе перестал работать сканер штрихкодов.",
     "status": "resolved",
+    "category": "general",
+    "assigned_to": null,
     "created_at": "2026-11-10T09:30:00.000Z",
     "updated_at": "2026-11-10T11:00:00.000Z",
     "author": {
@@ -218,7 +231,7 @@ GET /tickets/:id response for an ADMIN:
 }
 ~~~
 
-The EMPLOYEE receives the same data object with the author property
+The EMPLOYEE and assigned MANAGER receive the same data object with the author property
 omitted. History events are ordered by id ascending.
 
 ## Admin list and status mutation
@@ -390,11 +403,12 @@ POST /admin/users (admin session and exact trusted Origin required):
 }
 ```
 
-All four fields are required strings. Phone uses the same Kazakhstan
+The four profile fields are required strings. Optional role is employee (default) or manager.
+An administrator cannot create another admin through this endpoint. Phone uses the same Kazakhstan
 normalization as login, with a maximum of 64 input characters. The other three
 fields are trimmed and must each contain 1-120 Unicode characters. Extra keys,
-including role, password, is_active and must_change_password, are rejected.
-The role is always employee; the account starts active and must change its
+including password, is_active and must_change_password, are rejected; any role except employee/manager is rejected.
+The account starts active and must change its
 password. A duplicate normalized phone returns 409 PHONE_EXISTS, including
 phones assigned to disabled users or admins.
 
@@ -440,7 +454,7 @@ GET /admin/users?page=1&limit=20 returns:
 
 Each item uses the `data.user` shape in the create example **without**
 temporary_password. Both active and disabled employees are included;
-administrators are excluded. Page defaults to 1, limit to 20 and is capped at
+administrators are excluded. Add role=manager to list managers instead of employees (role=employee is the default). Page defaults to 1, limit to 20 and is capped at
 50. Order: created_at DESC, id DESC. No hash or session fields are returned.
 
 ### Activate or block an employee
@@ -453,13 +467,13 @@ PATCH /admin/users/:id body:
 
 Use true to activate. Exactly one boolean is required; other keys are rejected.
 200 returns `{"data":{"user":{...}}}` with the same employee user shape as
-creation. An unknown ID or administrator ID returns 404 NOT_FOUND.
+creation. Both employees and managers can be blocked/activated; an unknown ID or administrator ID returns 404 NOT_FOUND.
 Deactivation and deletion of **all** that employee's sessions are atomic.
 Existing cookies then return 401 UNAUTHORIZED; login with correct credentials
 returns 403 ACCOUNT_DISABLED while blocked. Activation does not revive revoked
 sessions or clear must_change_password. No user deletion/role changes are exposed.
 
-### Reset a forgotten employee password (admin only)
+### Reset a forgotten employee or manager password (admin only)
 
 POST /admin/users/:id/reset-password requires a current active administrator
 session, no pending mandatory password change, and the exact trusted Origin.
@@ -490,7 +504,7 @@ is_active) are rejected. The existing 32 KiB request limit applies.
 
 `user` is the existing employeeView shape. The server generates 24 random bytes
 (base64url, 32 characters), hashes the password with the existing Argon2id
-settings, sets must_change_password=1 and revokes **all** employee sessions in
+settings, sets must_change_password=1 and revokes **all** target account sessions in
 one SQLite transaction. is_active is preserved: a blocked employee remains
 blocked and cannot log in until separately activated. No schema migration is
 needed. Existing tickets, histories and other accounts are unchanged.
@@ -507,13 +521,13 @@ Admin authorization/session and the target role are rechecked under the SQLite
 write lock after Argon2. Password work shares the existing two-task limit with
 login, account creation and password changes. Overload returns 503
 SERVICE_UNAVAILABLE. Sequential resets each generate a new password and revoke
-all employee sessions again. Overlapping resets (or another password change)
+all target account sessions again. Overlapping resets (or another password change)
 that started from the same hash cannot both overwrite it: the stale request
 returns 409 PASSWORD_CHANGED with no temporary password. SQLite errors roll
 back the hash, flag and session revocations together (500 INTERNAL_ERROR).
 
 - 401 UNAUTHORIZED: no valid session, including a session revoked during hashing.
-- 403 FORBIDDEN: employee caller, administrator target or self-reset.
+- 403 FORBIDDEN: employee caller, administrator target or self-reset (employee and manager targets are allowed).
 - 403 ACCOUNT_DISABLED / PASSWORD_CHANGE_REQUIRED: current admin account is
   disabled / has a pending password change.
 - 403 INVALID_ORIGIN: missing or different Origin.
@@ -569,8 +583,8 @@ returns 409 PASSWORD_CHANGED and requires sign-in again.
 
 Migration 0003_account_lifecycle.sql adds users.must_change_password with a
 non-null default of 0 and an index for employee pagination. Existing users,
-Argon2 hashes, roles, tickets, histories and sessions are retained. Only newly
-created employees receive must_change_password=1 automatically. Demo seed
+Argon2 hashes, roles, tickets, histories and sessions are retained. Newly
+created employees and managers receive must_change_password=1 automatically. Demo seed
 accounts remain compatible with v0.2; seed is not the bootstrap command.
 
 All /admin/users routes require a current active administrator session.
@@ -607,7 +621,7 @@ tickets.total. History events never multiply ticket counts. Empty sets return
 numeric 0, never null. Responses use Cache-Control: no-store and contain no
 personal data, passwords, hashes or session details. No database mutation occurs.
 
-Anonymous/expired sessions return 401 UNAUTHORIZED; employee sessions return
+Anonymous/expired sessions return 401 UNAUTHORIZED; target account sessions return
 403 FORBIDDEN. Disabled admins return 403 ACCOUNT_DISABLED, and an account
 requiring password change returns 403 PASSWORD_CHANGE_REQUIRED. Role and account
 state are checked on each request using the existing auth middleware. Existing
@@ -624,7 +638,7 @@ do not set application/json or a manual boundary when passing FormData.
 Same-origin cookie authentication and the exact trusted Origin remain required.
 
 Only the ticket author may upload, and only while status is new. An administrator
-who is not the author cannot upload. Employees requesting another employee's
+who is not the author cannot upload; managers cannot upload. Employees requesting another employee's
 ticket receive 404; an admin uploading to someone else's ticket gets 403 FORBIDDEN.
 The session, author, status and remaining quota are checked before reading and
 again under a write transaction after streaming. A status change to in_review
@@ -674,14 +688,14 @@ manual retry; do not automatically send the same file again.
 GET /api/v1/tickets/:id now includes `data.attachments`, an array of the same
 metadata objects as above, ordered by attachment id ascending. Old tickets and
 tickets with no uploads return `attachments: []`. Existing ticket fields,
-author-only/admin access rules and history order stay unchanged. The author
+author/admin access and history order stay unchanged; assigned managers can also read. The author
 object is still omitted for employees and included only for admins. List,
 create and status-change response shapes do not gain attachment fields.
 
 ### Protected binary download
 
 GET /api/v1/tickets/:id/attachments/:attachmentId requires a current session:
-only the author and administrators may read. The attachment must belong to that
+only the author, administrators and the currently assigned manager may read. The attachment must belong to that
 specific ticket; mismatched IDs, missing files or unauthorized employee access
 return 404 NOT_FOUND. Disabled accounts and mandatory-password-change sessions
 retain existing restrictions. Account/session access is rechecked after disk I/O.
@@ -747,3 +761,146 @@ malicious PDF content and decompression bombs are not guaranteed absent. The
 backend does not decode images, execute documents or serve them as frontend
 assets; downloads are marked attachment and nosniff. No malware scanning,
 external storage, attachment editing/deletion or other features are included.
+
+## v0.5: manager routing
+
+Category codes are `it` (IT), `procurement` (Закупки) and `general` (Общее).
+Labels and RU/KZ translations belong to the frontend. category is immutable
+through the MVP API; assignment and status have separate endpoints.
+
+### Accounts and categories
+
+POST /admin/users now accepts optional `role: "manager"`; absent role still
+creates an employee. Profile fields and the one-time `temporary_password`
+response are unchanged. GET /admin/users?role=manager uses the existing
+pagination and employeeView shape with role=manager. PATCH /admin/users/:id
+and POST /admin/users/:id/reset-password support both employee and manager
+accounts. No API can create an admin or change an existing account's role.
+Managers use the same login, change-password, logout, Origin, cookie and Argon2
+limits. Mandatory change and activation checks apply to every private route.
+Managers cannot call any /admin/* API, including /admin/stats.
+
+GET /categories (any active authenticated role after mandatory password change):
+
+```json
+{"data":["it","procurement","general"]}
+```
+
+### Category rules (admin only)
+
+GET /admin/routing returns all three rows, ordered by category:
+
+```json
+{"data":[{"category":"general","manager_id":null},{"category":"it","manager_id":7},{"category":"procurement","manager_id":8}]}
+```
+
+PATCH /admin/routing/it with JSON `{"manager_id":7}` returns
+`{"data":{"category":"it","manager_id":7}}`. Explicit null removes the rule's
+manager. The field is required; other keys are rejected. A non-null manager_id
+must be a positive safe JSON integer identifying an active role=manager user.
+Missing, disabled, employee or admin targets return 400 VALIDATION_ERROR with
+`details.manager_id = INVALID_MANAGER`; invalid category returns 400 with
+`details.category = INVALID_CATEGORY`.
+
+A disabled manager may remain recorded in a rule; GET returns that ID, but new
+tickets use assigned_to=null while that manager is disabled or no longer a
+manager. Rules can be cleared or replaced by an administrator. Updating a rule
+never changes any existing ticket.
+
+### Creation and ticket views
+
+POST /tickets (employee) accepts the existing fields plus optional category:
+
+```json
+{"type":"problem","title":"Broken scanner","description":"The scanner stopped working today.","category":"it"}
+```
+
+In the same write transaction as ticket/event creation, the server looks up the
+category's current active manager and stores its ID in assigned_to. No active
+manager means null. Omitted category means general; unknown values are 400
+VALIDATION_ERROR. Sending assigned_to or other unknown fields is also 400.
+
+Create, detail and list ticket objects now include `category` (code string) and
+`assigned_to` (integer or null). Existing fields and pagination remain unchanged.
+Only admins receive the author object; managers do not receive author phone or
+account details. Events retain their existing shape; actor.role may now be
+manager. This audit trail records status changes, not assignment/rule changes.
+
+### Manager queue, details and decisions
+
+GET /manager/tickets?page=1&limit=20&status=new returns only current assignments:
+
+```json
+{"data":[{"id":124,"type":"problem","title":"Broken scanner","status":"new","category":"it","assigned_to":7,"created_at":"2026-11-12T09:00:00.000Z","updated_at":"2026-11-12T09:00:00.000Z"}],"pagination":{"page":1,"limit":20,"total":1}}
+```
+
+The status filter is optional (new, in_review, resolved, rejected); invalid
+status is 400. Pagination is unchanged (default 20, capped at 50). Use the
+existing GET /tickets/:id for content, events and attachment metadata, and
+GET /tickets/:id/attachments/:attachmentId for protected bytes. Every request
+checks the current assignment. Another manager's or unassigned ticket returns
+404 NOT_FOUND, including direct IDs and downloads. Managers cannot upload files.
+
+PATCH /manager/tickets/:id uses exactly the admin status request and response:
+
+```json
+{"status":"resolved","comment":"The scanner was repaired."}
+```
+
+Allowed transitions: new -> in_review -> resolved OR rejected. Terminal comment
+is mandatory, trimmed, 5-2000 characters; missing/invalid comment is 400
+VALIDATION_ERROR. Invalid transition is 409 INVALID_TRANSITION. A successful 200
+returns the existing `{data:{id,status,updated_at,event}}` shape. Both roles use
+one handler and transaction; assignment/session/role and current status are
+rechecked under the write lock after reading the body. Every successful status
+change appends the existing ticket_events record atomically. Admins retain
+PATCH /admin/tickets/:id and may process any ticket without assigning themselves.
+
+### Explicit assignment and unassigned queue (admin only)
+
+PATCH /admin/tickets/124/assignment with JSON `{"assigned_to":8}` returns:
+
+```json
+{"data":{"id":124,"category":"it","assigned_to":8,"updated_at":"2026-11-12T10:00:00.000Z"}}
+```
+
+Explicit null unassigns. Only this field is accepted and is required. Non-null
+values must identify an active manager, using the same 400 VALIDATION_ERROR
+rules with `details.assigned_to = INVALID_MANAGER`. Unknown ticket is 404.
+Assignment does not change category or status and may cross category rules.
+The previous manager loses access immediately after commit, including an
+in-progress status request waiting on its body. Already received bytes cannot
+be withdrawn. Downloads recheck access before releasing the response stream.
+
+GET /admin/tickets?unassigned=true lists tickets with assigned_to=NULL and
+supports the existing status/page/limit filters. false or omitted includes all
+tickets; any other unassigned value is 400. Blocking a manager revokes all their
+sessions but preserves rules and existing ticket assignments. Activation does
+not revive old sessions; newly logged-in managers can access retained assignments.
+
+### Migration and backup
+
+0005_manager_routing.sql rebuilds users with the extended role CHECK, retaining
+IDs, hashes, flags and AUTOINCREMENT high-water mark; it adds category, assigned_to
+and category_routing. Old tickets receive general/NULL; old accounts, sessions,
+events, attachment metadata and files are retained. Existing migrations are
+unchanged. The runner disables FK enforcement only for the rebuild transaction,
+runs foreign_key_check before commit and restores enforcement afterward. Errors
+roll back the rebuild. Do not execute this SQL file alone with FK enforcement on.
+
+Before applying 0005 to a file database, the runner creates a WAL-consistent
+VACUUM INTO snapshot at `<database-directory>/.team-voice-backup-*/before-0005.sqlite`.
+Backup failure aborts migration. Successful snapshots are retained and contain
+private account/session data: protect the DB directory's Windows ACL, keep it
+outside frontend/Git and do not share it. A normal repeated start does not
+create another backup; concurrent first starts may create multiple snapshots.
+Both the default frontend and configured FRONTEND_DIR are forbidden DB locations,
+including resolved symlinks. In-memory test databases do not create backup files.
+
+Stop all project server instances before the first upgrade. Run the normal
+`npm.cmd --prefix backend run db:migrate`, then start the server normally. Never
+seed an existing database. To roll back, stop servers, preserve the current DB,
+WAL/SHM and attachments separately, and restore a chosen verified pre-0005 snapshot
+using the matching old backend version; do not overwrite an open database or
+attempt to run old code against the upgraded schema. Backup restoration is a
+separate explicit operator action, not an automatic startup fallback.

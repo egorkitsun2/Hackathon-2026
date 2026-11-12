@@ -13,12 +13,13 @@ import { allowLogin, loginRetryAfter, recordFailedLogin, digest, hashPassword, n
 import { ApiError, invalid, jsonBody, pagination, text, ticketId } from './validation.js'
 import type { AppEnv, Role, Ticket, TicketStatus, User } from './types.js'
 
+const categories = ['it', 'procurement', 'general'] as const
 const statuses = ['new', 'in_review', 'resolved', 'rejected']
 const ticketTypes = ['problem', 'suggestion', 'complaint', 'gratitude']
 const publicUser = (user: User) => ({ id: user.id, full_name: user.full_name, phone: user.phone,
   department: user.department, position: user.position, role: user.role })
 const publicTicket = (ticket: Ticket) => ({ id: ticket.id, type: ticket.type, title: ticket.title,
-  description: ticket.description, status: ticket.status, created_at: ticket.created_at, updated_at: ticket.updated_at })
+  description: ticket.description, status: ticket.status, category: ticket.category, assigned_to: ticket.assigned_to, created_at: ticket.created_at, updated_at: ticket.updated_at })
 
 export interface AppOptions { db: DatabaseSync; origin: string; production?: boolean; attachmentsDir?: string; frontendDir?: string }
 
@@ -199,7 +200,9 @@ export async function createApp({ db, origin, production = false, attachmentsDir
   })
 
   app.post('/api/v1/admin/users', authenticated('admin'), async (c) => {
-    const body = await jsonBody(c, ['phone', 'full_name', 'department', 'position'])
+    const body = await jsonBody(c, ['phone', 'full_name', 'department', 'position', 'role'])
+    const role = body.role === undefined ? 'employee' : body.role
+    if (role !== 'employee' && role !== 'manager') return invalid({ role: 'INVALID_ROLE' })
     const profile = accountProfile(body)
     const password = temporaryPassword()
     const passwordHash = await passwordWork(() => hashPassword(password))
@@ -207,8 +210,8 @@ export async function createApp({ db, origin, production = false, attachmentsDir
       sessionUser(c.get('tokenHash'), 'admin')
       if (db.prepare('SELECT id FROM users WHERE phone = ?').get(profile.phone)) throw new ApiError(409, 'PHONE_EXISTS', 'Phone already in use')
       const result = db.prepare(`INSERT INTO users (phone, full_name, department, position, password_hash, role,
-        is_active, must_change_password, created_at) VALUES (?, ?, ?, ?, ?, 'employee', 1, 1, ?)`)
-        .run(profile.phone, profile.full_name, profile.department, profile.position, passwordHash, new Date().toISOString())
+        is_active, must_change_password, created_at) VALUES (?, ?, ?, ?, ?, ?, 1, 1, ?)`)
+        .run(profile.phone, profile.full_name, profile.department, profile.position, passwordHash, role, new Date().toISOString())
       return db.prepare('SELECT * FROM users WHERE id = ?').get(Number(result.lastInsertRowid)) as unknown as User
     })
     // The temporary password is returned exactly once, only to the authenticated administrator.
@@ -220,14 +223,14 @@ export async function createApp({ db, origin, production = false, attachmentsDir
     if ((await c.req.text()).length) await jsonBody(c, [])
     const employee = db.prepare('SELECT * FROM users WHERE id = ?').get(id) as unknown as User | undefined
     if (!employee) throw new ApiError(404, 'NOT_FOUND', 'Employee not found')
-    if (employee.role !== 'employee' || id === c.get('user').id) throw new ApiError(403, 'FORBIDDEN', 'Only employee passwords can be reset')
+    if (!['employee', 'manager'].includes(employee.role) || id === c.get('user').id) throw new ApiError(403, 'FORBIDDEN', 'Only employee or manager passwords can be reset')
     const password = temporaryPassword()
     const passwordHash = await passwordWork(() => hashPassword(password))
     const user = transaction(db, () => {
       const admin = sessionUser(c.get('tokenHash'), 'admin')
       const current = db.prepare('SELECT * FROM users WHERE id = ?').get(id) as unknown as User | undefined
       if (!current) throw new ApiError(404, 'NOT_FOUND', 'Employee not found')
-      if (current.role !== 'employee' || id === admin.id) throw new ApiError(403, 'FORBIDDEN', 'Only employee passwords can be reset')
+      if (!['employee', 'manager'].includes(current.role) || id === admin.id) throw new ApiError(403, 'FORBIDDEN', 'Only employee or manager passwords can be reset')
       if (current.password_hash !== employee.password_hash) throw new ApiError(409, 'PASSWORD_CHANGED', 'Password changed during reset; refresh before retrying')
       db.prepare('UPDATE users SET password_hash = ?, must_change_password = 1 WHERE id = ?').run(passwordHash, id)
       db.prepare('DELETE FROM sessions WHERE user_id = ?').run(id)
@@ -238,10 +241,12 @@ export async function createApp({ db, origin, production = false, attachmentsDir
   })
   app.get('/api/v1/admin/users', authenticated('admin'), (c) => {
     const { page, limit, offset } = pagination(c)
+    const role = c.req.query('role') ?? 'employee'
+    if (role !== 'employee' && role !== 'manager') return invalid({ role: 'INVALID_ROLE' })
     return c.json(transaction(db, () => {
-      const total = Number(db.prepare("SELECT count(*) AS total FROM users WHERE role = 'employee'").get()!.total)
+      const total = Number(db.prepare('SELECT count(*) AS total FROM users WHERE role = ?').get(role)!.total)
       const users = db.prepare(`SELECT id, phone, full_name, department, position, role, is_active, must_change_password, created_at
-        FROM users WHERE role = 'employee' ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?`).all(limit, offset) as unknown as User[]
+        FROM users WHERE role = ? ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?`).all(role, limit, offset) as unknown as User[]
       return { data: users.map(employeeView), pagination: { page, limit, total } }
     }))
   })
@@ -251,7 +256,7 @@ export async function createApp({ db, origin, production = false, attachmentsDir
     if (typeof body.is_active !== 'boolean') return invalid({ is_active: 'EXPECTED_BOOLEAN' })
     const user = transaction(db, () => {
       sessionUser(c.get('tokenHash'), 'admin')
-      const user = db.prepare("SELECT * FROM users WHERE id = ? AND role = 'employee'").get(id) as unknown as User | undefined
+      const user = db.prepare("SELECT * FROM users WHERE id = ? AND role IN ('employee', 'manager')").get(id) as unknown as User | undefined
       if (!user) throw new ApiError(404, 'NOT_FOUND', 'Employee not found')
       db.prepare('UPDATE users SET is_active = ? WHERE id = ?').run(body.is_active ? 1 : 0, id)
       if (!body.is_active) db.prepare('DELETE FROM sessions WHERE user_id = ?').run(id)
@@ -260,44 +265,99 @@ export async function createApp({ db, origin, production = false, attachmentsDir
     return c.json({ data: { user: employeeView(user) } })
   })
 
-  function listTickets(userId: number | null, page: number, limit: number, offset: number, status?: string) {
-    const where = userId !== null ? 'WHERE t.author_id = ?' : status ? 'WHERE t.status = ?' : ''
-    const args = userId !== null ? [userId] : status ? [status] : []
-    // The only dynamic SQL fragments are the fixed expressions above. All inputs are bound.
+  function activeManager(value: unknown, field: string): number | null {
+    if (value === null) return null
+    if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 1) return invalid({ [field]: 'INVALID_MANAGER' })
+    const manager = db.prepare("SELECT id FROM users WHERE id = ? AND role = 'manager' AND is_active = 1").get(value)
+    if (!manager) return invalid({ [field]: 'INVALID_MANAGER' })
+    return value
+  }
+  app.get('/api/v1/categories', authenticated(), (c) => c.json({ data: categories }))
+  app.get('/api/v1/admin/routing', authenticated('admin'), (c) => {
+    return c.json({ data: db.prepare('SELECT category, manager_id FROM category_routing ORDER BY category').all() })
+  })
+  app.patch('/api/v1/admin/routing/:category', authenticated('admin'), async (c) => {
+    const category = c.req.param('category')
+    if (!categories.includes(category as typeof categories[number])) return invalid({ category: 'INVALID_CATEGORY' })
+    const body = await jsonBody(c, ['manager_id'])
+    const rule = transaction(db, () => {
+      sessionUser(c.get('tokenHash'), 'admin')
+      const managerId = activeManager(body.manager_id, 'manager_id')
+      db.prepare('UPDATE category_routing SET manager_id = ? WHERE category = ?').run(managerId, category)
+      return { category, manager_id: managerId }
+    })
+    return c.json({ data: rule })
+  })
+  app.patch('/api/v1/admin/tickets/:id/assignment', authenticated('admin'), async (c) => {
+    const id = ticketId(c.req.param('id') ?? '')
+    const body = await jsonBody(c, ['assigned_to'])
+    const result = transaction(db, () => {
+      sessionUser(c.get('tokenHash'), 'admin')
+      const ticket = db.prepare('SELECT * FROM tickets WHERE id = ?').get(id) as unknown as Ticket | undefined
+      if (!ticket) throw new ApiError(404, 'NOT_FOUND', 'Ticket not found')
+      const assignedTo = activeManager(body.assigned_to, 'assigned_to')
+      const now = new Date().toISOString()
+      db.prepare('UPDATE tickets SET assigned_to = ?, updated_at = ? WHERE id = ?').run(assignedTo, now, id)
+      return { id, category: ticket.category, assigned_to: assignedTo, updated_at: now }
+    })
+    return c.json({ data: result })
+  })
+
+  function listTickets(user: User, page: number, limit: number, offset: number, status?: string, unassigned = false) {
+    const conditions: string[] = []
+    const args: (string | number)[] = []
+    if (user.role === 'employee') { conditions.push('t.author_id = ?'); args.push(user.id) }
+    if (user.role === 'manager') { conditions.push('t.assigned_to = ?'); args.push(user.id) }
+    if (status) { conditions.push('t.status = ?'); args.push(status) }
+    if (unassigned) conditions.push('t.assigned_to IS NULL')
+    const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : ''
+    // Only fixed SQL fragments are combined; all client values remain bound parameters.
     return transaction(db, () => {
       const total = Number(db.prepare(`SELECT count(*) AS total FROM tickets t ${where}`).get(...args)!.total)
-      const rows = db.prepare(`SELECT t.id, t.type, t.title, t.status, t.created_at, t.updated_at,
+      const rows = db.prepare(`SELECT t.id, t.type, t.title, t.status, t.category, t.assigned_to, t.created_at, t.updated_at,
         u.id AS author_id, u.full_name, u.department, u.position FROM tickets t
         JOIN users u ON u.id = t.author_id ${where}
         ORDER BY t.created_at DESC, t.id DESC LIMIT ? OFFSET ?`).all(...args, limit, offset)
       const data = rows.map((row) => ({ id: row.id, type: row.type, title: row.title, status: row.status,
-        created_at: row.created_at, updated_at: row.updated_at,
-        ...(userId === null ? { author: { id: row.author_id, full_name: row.full_name,
+        category: row.category, assigned_to: row.assigned_to, created_at: row.created_at, updated_at: row.updated_at,
+        ...(user.role === 'admin' ? { author: { id: row.author_id, full_name: row.full_name,
           department: row.department, position: row.position } } : {}) }))
       return { data, pagination: { page, limit, total } }
     })
   }
   app.get('/api/v1/tickets', authenticated('employee'), (c) => {
     const { page, limit, offset } = pagination(c)
-    return c.json(listTickets(c.get('user').id, page, limit, offset))
+    return c.json(listTickets(c.get('user'), page, limit, offset))
   })
   app.get('/api/v1/admin/tickets', authenticated('admin'), (c) => {
     const { page, limit, offset } = pagination(c)
     const status = c.req.query('status')
     if (status !== undefined && !statuses.includes(status)) return invalid({ status: 'INVALID_STATUS' })
-    return c.json(listTickets(null, page, limit, offset, status))
+    const unassigned = c.req.query('unassigned')
+    if (unassigned !== undefined && !['true', 'false'].includes(unassigned)) return invalid({ unassigned: 'EXPECTED_BOOLEAN' })
+    return c.json(listTickets(c.get('user'), page, limit, offset, status, unassigned === 'true'))
+  })
+  app.get('/api/v1/manager/tickets', authenticated('manager'), (c) => {
+    const { page, limit, offset } = pagination(c)
+    const status = c.req.query('status')
+    if (status !== undefined && !statuses.includes(status)) return invalid({ status: 'INVALID_STATUS' })
+    return c.json(listTickets(c.get('user'), page, limit, offset, status))
   })
   app.post('/api/v1/tickets', authenticated('employee'), async (c) => {
-    const body = await jsonBody(c, ['type', 'title', 'description'])
+    const body = await jsonBody(c, ['type', 'title', 'description', 'category'])
     if (typeof body.type !== 'string' || !ticketTypes.includes(body.type)) return invalid({ type: 'INVALID_TYPE' })
     const title = text(body.title, 'title', 5, 120)
     const description = text(body.description, 'description', 10, 4000)
+    const category = body.category === undefined ? 'general' : body.category
+    if (!categories.includes(category as typeof categories[number])) return invalid({ category: 'INVALID_CATEGORY' })
     const authorId = c.get('user').id
     const now = new Date().toISOString()
     const ticket = transaction(db, () => {
       sessionUser(c.get('tokenHash'), 'employee')
-      const result = db.prepare(`INSERT INTO tickets (author_id, type, title, description, status, created_at, updated_at)
-        VALUES (?, ?, ?, ?, 'new', ?, ?)`).run(authorId, body.type as string, title, description, now, now)
+      const manager = db.prepare(`SELECT u.id FROM category_routing r JOIN users u ON u.id = r.manager_id
+        WHERE r.category = ? AND u.role = 'manager' AND u.is_active = 1`).get(category as string)
+      const result = db.prepare(`INSERT INTO tickets (author_id, type, title, description, status, category, assigned_to, created_at, updated_at)
+        VALUES (?, ?, ?, ?, 'new', ?, ?, ?, ?)`).run(authorId, body.type as string, title, description, category as string, manager?.id ?? null, now, now)
       const id = Number(result.lastInsertRowid)
       db.prepare(`INSERT INTO ticket_events (ticket_id, actor_id, old_status, new_status, comment, created_at)
         VALUES (?, ?, NULL, 'new', NULL, ?)`).run(id, authorId, now)
@@ -306,10 +366,11 @@ export async function createApp({ db, origin, production = false, attachmentsDir
     return c.json({ data: publicTicket(ticket) }, 201)
   })
 
-  function attachmentTicket(id: number, user: User, upload = false): Ticket {
+  function accessibleTicket(id: number, user: User, upload = false): Ticket {
     const ticket = db.prepare('SELECT * FROM tickets WHERE id = ?').get(id) as unknown as Ticket | undefined
-    if (!ticket || (user.role !== 'admin' && ticket.author_id !== user.id)) throw new ApiError(404, 'NOT_FOUND', 'Ticket not found')
-    if (upload && ticket.author_id !== user.id) throw new ApiError(403, 'FORBIDDEN', 'Only the ticket author can upload attachments')
+    const allowed = ticket && (user.role === 'admin' || (user.role === 'employee' && ticket.author_id === user.id) || (user.role === 'manager' && ticket.assigned_to === user.id))
+    if (!ticket || !allowed) throw new ApiError(404, 'NOT_FOUND', 'Ticket not found')
+    if (upload && (user.role === 'manager' || ticket.author_id !== user.id)) throw new ApiError(403, 'FORBIDDEN', 'Only the ticket author can upload attachments')
     if (upload && ticket.status !== 'new') throw new ApiError(409, 'ATTACHMENTS_LOCKED', 'Attachments are allowed only for new tickets')
     return ticket
   }
@@ -318,15 +379,15 @@ export async function createApp({ db, origin, production = false, attachmentsDir
     if (count >= MAX_ATTACHMENTS) throw new ApiError(409, 'ATTACHMENT_LIMIT_REACHED', 'At most three attachments per ticket')
   }
   app.post('/api/v1/tickets/:id/attachments', authenticated(), async (c) => {
-    const id = ticketId(c.req.param('id'))
-    attachmentTicket(id, c.get('user'), true)
+    const id = ticketId(c.req.param('id') ?? '')
+    accessibleTicket(id, c.get('user'), true)
     attachmentQuota(id)
     const file = await attachmentStorage.receive(c.req.raw)
     let committed = false
     try {
       if (c.req.raw.signal.aborted) throw new ApiError(400, 'UPLOAD_ABORTED', 'Upload interrupted')
       const row = transaction(db, () => {
-        attachmentTicket(id, sessionUser(c.get('tokenHash')), true)
+        accessibleTicket(id, sessionUser(c.get('tokenHash')), true)
         attachmentQuota(id)
         attachmentStorage.publish(file)
         const created = db.prepare(`INSERT INTO ticket_attachments
@@ -339,20 +400,19 @@ export async function createApp({ db, origin, production = false, attachmentsDir
     } finally { if (!committed) await attachmentStorage.discard(file) }
   })
   app.get('/api/v1/tickets/:id/attachments/:attachmentId', authenticated(), async (c) => {
-    const id = ticketId(c.req.param('id'))
+    const id = ticketId(c.req.param('id') ?? '')
     const attachmentId = ticketId(c.req.param('attachmentId'))
-    attachmentTicket(id, c.get('user'))
+    accessibleTicket(id, c.get('user'))
     const row = db.prepare('SELECT * FROM ticket_attachments WHERE id = ? AND ticket_id = ?').get(attachmentId, id) as unknown as AttachmentRow | undefined
     if (!row) throw new ApiError(404, 'NOT_FOUND', 'Attachment not found')
-    return attachmentStorage.download(row, () => { attachmentTicket(id, sessionUser(c.get('tokenHash'))) })
+    return attachmentStorage.download(row, () => { accessibleTicket(id, sessionUser(c.get('tokenHash'))) })
   })
 
   app.get('/api/v1/tickets/:id', authenticated(), (c) => {
-    const id = ticketId(c.req.param('id'))
+    const id = ticketId(c.req.param('id') ?? '')
     const user = c.get('user')
     return c.json(transaction(db, () => {
-      const ticket = db.prepare('SELECT * FROM tickets WHERE id = ?').get(id) as unknown as Ticket | undefined
-      if (!ticket || (user.role !== 'admin' && ticket.author_id !== user.id)) throw new ApiError(404, 'NOT_FOUND', 'Ticket not found')
+      const ticket = accessibleTicket(id, user)
       const author = user.role === 'admin' ? db.prepare('SELECT id, full_name, department, position FROM users WHERE id = ?').get(ticket.author_id) : undefined
       const events = db.prepare(`SELECT e.id, e.old_status, e.new_status, e.comment, e.created_at,
         u.id AS actor_id, u.full_name AS actor_name, u.role AS actor_role FROM ticket_events e
@@ -364,18 +424,17 @@ export async function createApp({ db, origin, production = false, attachmentsDir
     }))
   })
 
-  app.patch('/api/v1/admin/tickets/:id', authenticated('admin'), async (c) => {
-    const id = ticketId(c.req.param('id'))
+  const changeTicketStatus: MiddlewareHandler<AppEnv> = async (c) => {
+    const id = ticketId(c.req.param('id') ?? '')
     const body = await jsonBody(c, ['status', 'comment'])
     if (typeof body.status !== 'string' || !statuses.includes(body.status)) return invalid({ status: 'INVALID_STATUS' })
     const nextStatus = body.status as TicketStatus
     const comment = body.comment === undefined ? null : text(body.comment, 'comment', 5, 2000)
     if (['resolved', 'rejected'].includes(nextStatus) && !comment) return invalid({ comment: 'COMMENT_REQUIRED' })
     const result = transaction(db, () => {
-      sessionUser(c.get('tokenHash'), 'admin')
-      // Read the status only after taking the write lock. Concurrent decisions cannot share an old status.
-      const ticket = db.prepare('SELECT * FROM tickets WHERE id = ?').get(id) as unknown as Ticket | undefined
-      if (!ticket) throw new ApiError(404, 'NOT_FOUND', 'Ticket not found')
+      const actor = sessionUser(c.get('tokenHash'), c.get('user').role)
+      // Recheck assignment under the write lock, including after waiting for the request body.
+      const ticket = accessibleTicket(id, actor)
       if (!((ticket.status === 'new' && nextStatus === 'in_review') ||
         (ticket.status === 'in_review' && ['resolved', 'rejected'].includes(nextStatus)))) {
         throw new ApiError(409, 'INVALID_TRANSITION', 'Invalid status transition')
@@ -388,7 +447,9 @@ export async function createApp({ db, origin, production = false, attachmentsDir
         old_status: ticket.status, new_status: nextStatus, comment, created_at: now } }
     })
     return c.json({ data: result })
-  })
+  }
+  app.patch('/api/v1/admin/tickets/:id', authenticated('admin'), changeTicketStatus)
+  app.patch('/api/v1/manager/tickets/:id', authenticated('manager'), changeTicketStatus)
 
   app.notFound((c) => c.json({ error: { code: 'NOT_FOUND', message: 'Route not found' } }, 404))
   app.onError((error, c) => {
