@@ -1,5 +1,6 @@
 export type Role = 'employee' | 'admin' | 'manager'
-export type TicketCategory = 'it' | 'procurement' | 'general'
+export type TicketCategory = string
+export interface Category { code: string; name_ru: string; name_kz: string; is_active: number }
 export type TicketStatus = 'new' | 'in_review' | 'resolved' | 'rejected'
 export interface User {
   id: number

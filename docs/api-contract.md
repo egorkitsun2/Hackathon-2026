@@ -1,6 +1,6 @@
-# Team Voice — API contract v0.5
+# Team Voice — API contract v0.6
 
-Status: MVP v0.5 manager routing on Node.js + Hono and SQLite.
+Status: MVP v0.6 dynamic directions on Node.js + Hono and SQLite.
 Existing routes retain their fields; all ticket views additionally return category and assigned_to.
 Existing account lifecycle and admin statistics routes remain unchanged.
 Account management and password resets now support employees and managers.
@@ -37,6 +37,9 @@ are translated on the frontend (RU/KZ); API enums are language-neutral.
 | GET | /admin/users | Admin | 200 |
 | GET | /admin/stats | Admin | 200 |
 | GET | /categories | Session | 200 |
+| GET | /admin/categories | Admin | 200 |
+| POST | /admin/categories | Admin | 201 |
+| PATCH | /admin/categories/:code | Admin | 200 |
 | GET | /admin/routing | Admin | 200 |
 | PATCH | /admin/routing/:category | Admin | 200 |
 | PATCH | /admin/tickets/:id/assignment | Admin | 200 |
@@ -314,7 +317,7 @@ All errors use this envelope:
 | 403 | FORBIDDEN, ACCOUNT_DISABLED, INVALID_ORIGIN or PASSWORD_CHANGE_REQUIRED |
 | 404 | NOT_FOUND |
 | 408 | UPLOAD_TIMEOUT |
-| 409 | INVALID_TRANSITION, PHONE_EXISTS, PASSWORD_CHANGED, ATTACHMENTS_LOCKED or ATTACHMENT_LIMIT_REACHED |
+| 409 | INVALID_TRANSITION, PHONE_EXISTS, PASSWORD_CHANGED, ATTACHMENTS_LOCKED, ATTACHMENT_LIMIT_REACHED, CATEGORY_EXISTS, CATEGORY_ARCHIVED or CATEGORY_REQUIRED_ACTIVE |
 | 413 | FILE_TOO_LARGE or UPLOAD_TOO_LARGE |
 | 415 | UNSUPPORTED_MEDIA_TYPE or UNSUPPORTED_FILE_TYPE |
 | 429 | RATE_LIMITED |
@@ -766,8 +769,8 @@ external storage, attachment editing/deletion or other features are included.
 
 ## v0.5: manager routing
 
-Category codes are `it` (IT), `procurement` (Закупки) and `general` (Общее).
-Labels and RU/KZ translations belong to the frontend. category is immutable
+Initial category codes are `it` (IT), `procurement` (Закупки) and `general` (Администрация). Additional codes and localized names are managed through the v0.6 API below.
+Direction labels now come from the categories table; interface labels remain translated by the frontend. category is immutable
 through the MVP API; assignment and status have separate endpoints.
 
 ### Accounts and categories
@@ -782,7 +785,7 @@ Managers use the same login, change-password, logout, Origin, cookie and Argon2
 limits. Mandatory change and activation checks apply to every private route.
 Managers cannot call any /admin/* API, including /admin/stats.
 
-GET /categories (any active authenticated role after mandatory password change):
+GET /categories (any active authenticated role after mandatory password change) returns active codes in creation order; the following is the initial result:
 
 ```json
 {"data":["it","procurement","general"]}
@@ -790,7 +793,7 @@ GET /categories (any active authenticated role after mandatory password change):
 
 ### Category rules (admin only)
 
-GET /admin/routing returns all three rows, ordered by category:
+GET /admin/routing returns one row per direction, including archived directions, ordered by category. Initial example:
 
 ```json
 {"data":[{"category":"general","manager_id":null},{"category":"it","manager_id":7},{"category":"procurement","manager_id":8}]}
@@ -802,7 +805,7 @@ manager. The field is required; other keys are rejected. A non-null manager_id
 must be a positive safe JSON integer identifying an active role=manager user.
 Missing, disabled, employee or admin targets return 400 VALIDATION_ERROR with
 `details.manager_id = INVALID_MANAGER`; invalid category returns 400 with
-`details.category = INVALID_CATEGORY`.
+`details.category = INVALID_CATEGORY`. An archived direction returns 409 CATEGORY_ARCHIVED; existing routing and assignments remain saved.
 
 A disabled manager may remain recorded in a rule; GET returns that ID, but new
 tickets use assigned_to=null while that manager is disabled or no longer a
@@ -819,7 +822,7 @@ POST /tickets (employee) accepts the existing fields plus optional category:
 
 In the same write transaction as ticket/event creation, the server looks up the
 category's current active manager and stores its ID in assigned_to. No active
-manager means null. Omitted category means general; unknown values are 400
+manager means null. Omitted category means general; archived codes are 409 CATEGORY_ARCHIVED; unknown values are 400
 VALIDATION_ERROR. Sending assigned_to or other unknown fields is also 400.
 
 Create, detail and list ticket objects now include `category` (code string) and
@@ -935,3 +938,136 @@ WAL/SHM and attachments separately, and restore a chosen verified pre-0005 snaps
 using the matching old backend version; do not overwrite an open database or
 attempt to run old code against the upgraded schema. Backup restoration is a
 separate explicit operator action, not an automatic startup fallback.
+
+## v0.6: dynamic directions
+
+Direction codes (the existing category field) are stored in categories rather
+than a fixed backend/SQLite enum. Codes are unique and immutable, including
+when archived. Initial rows retain it, procurement and general with labels:
+
+| code | name_ru | name_kz |
+|---|---|---|
+| it | IT | IT |
+| procurement | Закупки | Сатып алу |
+| general | Администрация | Әкімшілік |
+
+### List formats and access
+
+GET /categories retains the legacy shape, returning active codes in creation
+order: `{"data":["it","procurement","general"]}`. Any active authenticated role
+may read it after mandatory password change. Optional details=true returns
+localized metadata instead of codes:
+
+```json
+{"data":[{"code":"it","name_ru":"IT","name_kz":"IT","is_active":true},{"code":"procurement","name_ru":"Закупки","name_kz":"Сатып алу","is_active":true},{"code":"general","name_ru":"Администрация","name_kz":"Әкімшілік","is_active":true}]}
+```
+
+Optional include_archived=true includes archived directions, in either format.
+Use `/categories?details=true&include_archived=true` to label historical tickets;
+filter is_active=true for creation forms. Both query flags accept only literal
+true/false; omitted/false preserves defaults. Invalid values return 400
+VALIDATION_ERROR with details.details or details.include_archived equal to
+EXPECTED_BOOLEAN. This read API never discloses manager_id.
+
+GET /admin/categories requires an active administrator with no pending password
+change, and returns all directions including archived ones in creation order:
+
+```json
+{"data":[{"code":"it","name_ru":"IT","name_kz":"IT","is_active":true,"manager_id":7},{"code":"procurement","name_ru":"Закупки","name_kz":"Сатып алу","is_active":true,"manager_id":null},{"code":"general","name_ru":"Администрация","name_kz":"Әкімшілік","is_active":true,"manager_id":null}]}
+```
+
+No list pagination is introduced. is_active is a JSON boolean; manager_id is
+an integer or null. Route rules remain available through GET /admin/routing
+using the existing `{category,manager_id}` row format.
+
+### Create (admin only)
+
+POST /admin/categories with application/json and the exact trusted Origin:
+
+```json
+{"code":"hr","name_ru":"Кадры","name_kz":"Кадрлар","manager_id":null}
+```
+
+code, name_ru and name_kz are required. code must match
+`^[a-z][a-z0-9_]{1,31}$` (2-32 ASCII characters); it is not trimmed or normalized.
+Names are trimmed, 1-120 Unicode characters each, and cannot contain NUL.
+manager_id is optional; omitted or null means no responsible manager. A non-null
+ID must be a positive safe JSON integer for an active manager, checked under the
+write lock using the same rules as routing. Extra keys, including is_active,
+are rejected with 400 VALIDATION_ERROR. The direction starts active.
+
+201 response:
+
+```json
+{"data":{"code":"hr","name_ru":"Кадры","name_kz":"Кадрлар","is_active":true,"manager_id":null}}
+```
+
+The metadata and its routing row are created atomically. A code already present,
+even archived, returns 409 CATEGORY_EXISTS. Concurrent creates cannot create
+duplicate codes. To restore an archived direction, use PATCH rather than POST.
+
+### Archive and restore (admin only)
+
+PATCH /admin/categories/hr requires exactly `{"is_active":false}` to archive or
+`{"is_active":true}` to restore. 200 returns the same admin category object:
+
+```json
+{"data":{"code":"hr","name_ru":"Кадры","name_kz":"Кадрлар","is_active":false,"manager_id":null}}
+```
+
+Repeated archive/restore is idempotent. Unknown code returns 404 NOT_FOUND.
+Code/name changes and any extra keys are 400 VALIDATION_ERROR; names and codes
+are fixed after creation in this MVP. Archiving general returns 409
+CATEGORY_REQUIRED_ACTIVE, also enforced by a database constraint. There is no
+delete endpoint. Administrator session/role/activation/password state are
+rechecked inside mutation transactions after reading request bodies.
+
+### Existing tickets, routing and compatibility
+
+POST /tickets still accepts category as a string, defaulting to general when
+omitted. Existence and activity are checked from SQLite inside the same write
+transaction as ticket/event creation. Unknown codes remain 400 VALIDATION_ERROR
+with details.category=INVALID_CATEGORY; archived codes return 409 CATEGORY_ARCHIVED.
+This also prevents a request whose body was pending during archive from creating
+a ticket in the archived direction. Null/non-string category is invalid.
+
+PATCH /admin/routing/:category accepts any existing active direction code;
+archived codes return 409 CATEGORY_ARCHIVED. An initial manager is optional and
+can be assigned later through this existing route. Archived rules and their
+manager IDs stay visible to administrators and are retained after restoration.
+New tickets with no active manager still get assigned_to=null.
+
+Archiving does not delete or edit existing tickets, assignments, timestamps,
+events, files or routing rows. Existing archived-category tickets remain in
+employee/admin/manager queues under the same access rules, with protected
+attachment downloads and the usual status transitions. Admin manual assignment
+remains available even for archived categories. Restoring does not reassign old
+tickets. needs_reassignment retains its existing status/assignment/account-state
+meaning; category archive by itself neither sets nor clears it.
+
+### Migration 0006 and backup
+
+0006_dynamic_categories.sql adds metadata and replaces the fixed category CHECK
+constraints in tickets and category_routing with references to categories(code).
+Ticket IDs, AUTOINCREMENT high-water mark, authors, assignments, statuses and
+indexes are retained; users, sessions, events, attachment metadata and files
+are unchanged. Codes are protected against updates by a trigger.
+
+Before applying 0006 to a file database, the runner takes a consistent snapshot
+including committed WAL changes at
+`<database-directory>/.team-voice-backup-*/before-0006.sqlite`. A database older
+than 0005 gets a separate before-0005 snapshot before that migration too. In-memory
+databases create no files. No snapshot is added on an ordinary repeated start;
+concurrent first runs may create additional snapshots. Protect the database
+and backup directory with private Windows permissions; neither may be public.
+
+The rebuild runs in one transaction with foreign keys disabled only outside
+the transaction, foreign_key_check before commit, and enforcement restored
+in finally. Backup failure aborts before changing the 0006 schema; rebuild or
+FK-check errors roll back all its changes. Previously committed older migrations
+remain recorded. Do not execute 0006 SQL directly with foreign keys enabled.
+Stop project servers before the first update and run the normal
+`npm.cmd --prefix backend run db:migrate`; never seed an existing database.
+For a deliberate rollback, stop servers, preserve the current DB and attachments,
+then restore a verified pre-0006 snapshot with the matching pre-0006 backend.
+Automatic rollback to an older database file is not performed.

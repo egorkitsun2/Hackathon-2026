@@ -1,9 +1,12 @@
 # Team Voice backend
 
-Hackathon MVP v0.5: TypeScript + Hono on Node.js, SQLite, Argon2id and server-side
+Hackathon MVP v0.6: TypeScript + Hono on Node.js, SQLite, Argon2id and server-side
 cookie sessions. The API and JSON shapes are defined in
 [`docs/api-contract.md`](../docs/api-contract.md). No Cloudflare account,
 Workers subscription or cloud resources are required.
+
+Dynamic directions and migration 0006: [API v0.6](../docs/api-contract.md#v06-dynamic-directions).
+Frontend handoff: [dynamic directions](../docs/frontend-dynamic-categories.md).
 
 Manager routing and first-upgrade backup instructions: [API v0.5](../docs/api-contract.md#v05-manager-routing).
 Frontend integration: [manager routing handoff](../docs/frontend-manager-routing.md).
