@@ -268,3 +268,20 @@ test('manager directory fetches every page instead of silently truncating choice
   globalThis.fetch=async url=>{urls.push(url);return Response.json({data:urls.length===1?Array.from({length:20},(_,id)=>({id:id+1,role:'manager'})):[{id:21,role:'manager'}],pagination:{page:urls.length,limit:20,total:21}});};
   try {const result=await api.getManagers();assert.equal(result.length,21);assert.equal(urls.length,2);assert.match(urls[1],/page=2.*role=manager/);}finally{globalThis.fetch=previous;}
 });
+
+
+test('manager assignment check uses existing rules then scans ticket pages including later assignments', async () => {
+  const previous=globalThis.fetch;let calls=[],mode='rule';
+  globalThis.fetch=async url=>{
+    calls.push(url);
+    if(url.endsWith('/admin/routing'))return Response.json({data:[{category:'it',manager_id:mode==='rule'?7:null}]});
+    const page=Number(new URL('http://local'+url).searchParams.get('page'));
+    return Response.json({data:page===2?[{id:51,assigned_to:mode==='ticket'?7:8}]:Array.from({length:50},(_,id)=>({id,assigned_to:null})),pagination:{page,limit:50,total:51}});
+  };
+  try {
+    assert.equal(await api.hasManagerAssignments(7),true);assert.equal(calls.length,1);
+    mode='ticket';calls=[];assert.equal(await api.hasManagerAssignments(7),true);assert.equal(calls.length,3);assert.match(calls.at(-1),/page=2/);
+    mode='none';calls=[];assert.equal(await api.hasManagerAssignments(7),false);
+    assert.ok(calls.every(url=>url.includes('/admin/')));
+  }finally{globalThis.fetch=previous;}
+});

@@ -229,9 +229,18 @@ input[type="file"]::file-selector-button { min-height: 2.5rem; margin-right: .75
 .routing-details { display: grid; gap: .75rem; margin-top: 1.25rem; }
 .routing-details dt { color: var(--color-muted); font-size: var(--small-size); }
 .routing-details dd { margin: .25rem 0 0; overflow-wrap: anywhere; font-weight: 500; }
-.routing-settings { display: grid; gap: 1rem; margin-top: 1rem; }
-.routing-settings form { padding: 1rem; border: 1px solid var(--color-border); border-radius: var(--radius); background: var(--color-inset); }
-.routing-settings button { margin-top: .75rem; }
+.routing-settings { display: grid; grid-template-columns: repeat(auto-fit,minmax(min(100%,17rem),1fr)); align-items: start; gap: 1rem; margin-top: 1rem; }
+.routing-settings form { display: grid; align-content: start; gap: .625rem; min-width: 0; margin: 0; padding: 1rem; border: 1px solid var(--color-border); border-radius: var(--radius); background: var(--color-inset); }
+.routing-settings label, .routing-settings .hint { margin: 0; }
+.routing-actions { display: flex; flex-wrap: wrap; gap: .5rem; }
+.routing-actions button { flex: 1 1 7rem; width: auto; margin: 0; padding-inline: .625rem; }
+.routing-current[data-blocked="true"] { color: var(--color-error); }
+.routing-note { font-size: var(--small-size); }
+.users-filter { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem .875rem; margin-top: .875rem; }
+.users-filter label { margin: 0; }
+.users-filter select { width: min(100%,18rem); }
+#users-screen #users-list { align-items: start; gap: 1rem; }
+#users-screen .user-card { padding: 1rem; gap: .5rem; }
 .checkbox-field { display: flex; gap: .625rem; align-items: center; min-height: 2.75rem; margin-top: .75rem; cursor: pointer; }
 .checkbox-field input { width: 1.25rem; height: 1.25rem; margin: 0; accent-color: var(--color-primary); }
 #retry-ticket-detail, #take-ticket { margin-top: 1rem; }

@@ -6,9 +6,9 @@
   <meta name="color-scheme" content="light dark">
   <title>Голос команды</title>
   <link rel="icon" href="data:,">
-  <script src="js/theme-init.js?v=routing-v05-20261112-1"></script>
-  <link rel="stylesheet" href="css/styles.css?v=routing-v05-20261112-1">
-  <script type="module" src="js/app.js?v=routing-v05-20261112-1"></script>
+  <script src="js/theme-init.js?v=admin-tabs-20261112-1"></script>
+  <link rel="stylesheet" href="css/styles.css?v=admin-tabs-20261112-1">
+  <script type="module" src="js/app.js?v=admin-tabs-20261112-1"></script>
 </head>
 <body>
   <a id="skip-to-content" class="skip-link" href="#app" data-i18n="skipContent"></a>
@@ -32,6 +32,7 @@
       <a href="#/employee" data-nav-role="employee" data-nav-page="tickets" data-i18n="myTickets"></a>
       <a href="#/admin" data-nav-role="admin" data-nav-page="tickets" data-i18n="adminQueue"></a>
       <a href="#/admin/users" data-nav-role="admin" data-nav-page="users" data-i18n="usersManagement"></a>
+      <a href="#/admin/routing" data-nav-role="admin" data-nav-page="routing" data-i18n="routingTab"></a>
       <a href="#/manager" data-nav-role="manager" data-nav-page="tickets" data-i18n="managerQueue" hidden></a>
     </nav>
     <div id="session-loading" class="login-panel" role="status">
@@ -334,17 +335,11 @@
         <button id="close-user-created" class="secondary-button" type="button" data-i18n="closeResult"></button>
       </section>
       </dialog>
-      <section id="category-managers-panel" class="content-block" aria-labelledby="category-managers-title">
-        <h2 id="category-managers-title" data-i18n="directionManagers"></h2>
-        <p class="hint" data-i18n="directionManagersHint"></p>
-        <p id="category-managers-status" class="status" role="status"></p>
-        <button id="retry-category-managers" class="secondary-button" type="button" data-i18n="retry" hidden></button>
-        <div id="category-managers-list" class="routing-settings"></div>
-      </section>
+
       <section class="content-block" aria-labelledby="users-list-title">
         <h2 id="users-list-title" data-i18n="employeeListTitle"></h2>
-        <label for="users-role-filter" data-i18n="userRole"></label>
-        <select id="users-role-filter"><option value="employee" data-i18n="roleEmployee"></option><option value="manager" data-i18n="roleManager"></option></select>
+        <div class="users-filter"><label for="users-role-filter" data-i18n="userRole"></label>
+        <select id="users-role-filter"><option value="employee" data-i18n="roleEmployee"></option><option value="manager" data-i18n="roleManager"></option></select></div>
         <p id="users-status" class="status" role="status"></p>
         <p id="users-action-status" class="status" role="status"></p>
         <button id="retry-users" class="secondary-button" type="button" data-i18n="retry" hidden></button>
@@ -356,6 +351,25 @@
         </nav>
       </section>
     </section>
+    <section id="routing-screen" class="employee-panel" aria-labelledby="routing-title" hidden>
+      <div class="page-header"><div><h1 id="routing-title" data-i18n="routingTab"></h1></div></div>
+      <section id="category-managers-panel" class="content-block" aria-labelledby="category-managers-title">
+        <h2 id="category-managers-title" data-i18n="directionManagers"></h2>
+        <p class="hint" data-i18n="directionManagersHint"></p>
+        <p id="category-managers-status" class="status" role="status"></p>
+        <button id="retry-category-managers" class="secondary-button" type="button" data-i18n="retry" hidden></button>
+        <div id="category-managers-list" class="routing-settings"></div>
+      </section>
+    </section>
+    <dialog id="block-manager-dialog" class="result-dialog" aria-labelledby="block-manager-title" aria-describedby="block-manager-warning">
+      <h2 id="block-manager-title" data-i18n="blockManagerTitle"></h2>
+      <p id="block-manager-person" class="employee-name"></p>
+      <p id="block-manager-warning" class="status" data-tone="warning"></p>
+      <div class="reset-dialog-actions">
+        <button id="cancel-block-manager" class="secondary-button" type="button" data-i18n="cancelReset"></button>
+        <button id="confirm-block-manager" class="secondary-button danger-button" type="button" data-i18n="confirmBlockManager"></button>
+      </div>
+    </dialog>
     <dialog id="reset-password-dialog" aria-labelledby="reset-password-title" aria-describedby="reset-password-warning">
       <h2 id="reset-password-title" data-i18n="resetPassword"></h2>
       <p id="reset-password-person" class="employee-name"></p>

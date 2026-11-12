@@ -145,6 +145,16 @@ export function getManagerTickets({ status = '', page = 1, limit = 20 } = {}) {
 }
 
 export const getRouting = () => request('/admin/routing');
+export async function hasManagerAssignments(id) {
+  if (!Number.isSafeInteger(id) || id < 1) throw new Error('VALIDATION_ERROR');
+  const routing = await getRouting();
+  if (routing.data.some(rule => rule.manager_id === id)) return true;
+  for (let page = 1; ; page++) {
+    const tickets = await getAdminTickets({ page, limit: 50 });
+    if (tickets.data.some(ticket => ticket.assigned_to === id)) return true;
+    if (page * tickets.pagination.limit >= tickets.pagination.total) return false;
+  }
+}
 const validManagerId = id => id === null || (Number.isSafeInteger(id) && id > 0);
 export function updateRouting(category, manager_id) {
   if (!['it', 'procurement', 'general'].includes(category) || !validManagerId(manager_id)) throw new Error('VALIDATION_ERROR');

@@ -21,6 +21,7 @@ function harness(api = {}) {
     changePassword: async () => ({ data: { user: employee }, meta: { passwordChangeRequired: false } }),
     createUser: async () => ({ data: { user: employee, temporary_password: 'test-only-secret' } }),
     resetUserPassword: async () => ({ data: { user: employee, temporary_password: 'reset-test-secret' } }),
+    hasManagerAssignments: async () => false,
     updateUser: async () => ({ data: { user: { ...employee, is_active: false } } }), ...api,
   });
   vm.runInContext(source, context);
@@ -266,4 +267,40 @@ test('lost creation response refreshes the selected creation role without retryi
   h.context.openAccounts('users');await flush();fillEmployee(h);h.get('user-role').value='manager';
   await h.submit('create-user-form');assert.equal(writes,1);assert.equal(reads.at(-1),'manager');
   assert.equal(h.get('users-role-filter').value,'manager');assert.equal(h.get('temporary-password').textContent,'');
+});
+
+
+test('assigned manager block warns before PATCH, supports cancel and requires explicit single confirmation', async () => {
+  const manager={...employee,id:7,role:'manager'};const write=deferred();let writes=0;
+  const h=harness({getUsers:async()=>({data:[manager],pagination:{page:1,limit:20,total:1}}),hasManagerAssignments:async()=>true,updateUser:()=>{writes++;return write.promise;}});
+  h.context.openAccounts('users');await flush();
+  await h.get('users-list').children[0].children.at(-1).events.click();
+  assert.equal(writes,0);assert.equal(h.get('block-manager-dialog').open,true);
+  assert.equal(h.get('block-manager-warning').textContent,'blockManagerAssignedWarning');
+  h.get('cancel-block-manager').events.click();assert.equal(h.get('block-manager-dialog').open,false);assert.equal(writes,0);
+  await h.get('users-list').children[0].children.at(-1).events.click();
+  const work=h.get('confirm-block-manager').events.click();h.get('confirm-block-manager').events.click();assert.equal(writes,1);
+  h.get('block-manager-dialog').events.close();assert.equal(h.get('users-role-filter').disabled,true);
+  write.resolve({data:{user:{...manager,is_active:false}}});await work;
+  assert.equal(h.get('users-action-status').textContent,'managerBlockedTransfer');assert.equal(h.get('users-action-status').dataset.tone,'warning');
+  assert.equal(h.get('block-manager-person').textContent,'');
+  assert.equal(h.get('users-list').children[0].children[4].textContent,'accountBlocked');
+});
+
+test('unassigned manager blocks directly and a failed assignment check never claims there are no assignments', async () => {
+  const manager={...employee,id:7,role:'manager'};let writes=0;
+  const h=harness({getUsers:async()=>({data:[manager],pagination:{page:1,limit:20,total:1}}),hasManagerAssignments:async()=>false,updateUser:async()=>{writes++;return {data:{user:{...manager,is_active:false}}};}});
+  h.context.openAccounts('users');await flush();await h.get('users-list').children[0].children.at(-1).events.click();
+  assert.equal(writes,1);assert.equal(h.get('block-manager-dialog').open,false);
+  h.context.closeAccounts();h.context.hasManagerAssignments=async()=>{throw new Error('NETWORK_ERROR');};
+  h.context.openAccounts('users');await flush();await h.get('users-list').children[0].children.at(-1).events.click();
+  assert.equal(writes,1);assert.equal(h.get('block-manager-dialog').open,true);assert.equal(h.get('block-manager-warning').textContent,'blockManagerUnknownWarning');
+});
+
+test('late assignment lookup cannot open a block dialog after leaving users', async () => {
+  const read=deferred(),manager={...employee,id:7,role:'manager'};
+  const h=harness({getUsers:async()=>({data:[manager],pagination:{page:1,limit:20,total:1}}),hasManagerAssignments:()=>read.promise});
+  h.context.openAccounts('users');await flush();const work=h.get('users-list').children[0].children.at(-1).events.click();
+  h.context.closeAccounts();read.resolve(true);await work;
+  assert.equal(h.get('block-manager-dialog').open,false);assert.equal(h.get('block-manager-person').textContent,'');
 });
