@@ -187,11 +187,14 @@ test('migration preserves v0.2 users, tickets, events and sessions', async () =>
       INSERT INTO sessions (token_hash,user_id,created_at,expires_at)
       VALUES ('aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',1,'2026-01-01','2027-01-01');
       INSERT INTO login_attempts (bucket,window_start,attempts) VALUES ('bucket',123,2)`);
-    const snapshot = (table: string) => db.prepare(`SELECT * FROM ${table}`).all();
+    const snapshot = (table: string) => db.prepare(`SELECT * FROM ${table}`).all().map(row => ({ ...row }));
     const before = Object.fromEntries(['tickets', 'ticket_events', 'sessions', 'login_attempts'].map(table => [table, snapshot(table)]));
     migrate(db);
     migrate(db);
-    for (const [table, rows] of Object.entries(before)) assert.deepEqual(snapshot(table), rows);
+    for (const [table, rows] of Object.entries(before)) {
+      const expected = table === 'tickets' ? rows.map(row => ({ ...row, category: 'general', assigned_to: null })) : rows;
+      assert.deepEqual(snapshot(table), expected);
+    }
     const user = db.prepare('SELECT phone,password_hash,role,is_active,must_change_password FROM users WHERE id = 1').get() as any;
     assert.deepEqual({ ...user }, { phone: '+77001111111', password_hash: 'old-hash', role: 'employee', is_active: 1, must_change_password: 0 });
   } finally { db.close(); }

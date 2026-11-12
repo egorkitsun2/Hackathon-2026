@@ -1,4 +1,5 @@
-export type Role = 'employee' | 'admin'
+export type Role = 'employee' | 'admin' | 'manager'
+export type TicketCategory = 'it' | 'procurement' | 'general'
 export type TicketStatus = 'new' | 'in_review' | 'resolved' | 'rejected'
 export interface User {
   id: number
@@ -15,6 +16,8 @@ export interface User {
 export interface Ticket {
   id: number
   author_id: number
+  category: TicketCategory
+  assigned_to: number | null
   type: string
   title: string
   description: string
