@@ -1,6 +1,6 @@
-import { getAdminTickets, getAdminStats, getManagers, getManagerTickets } from './api.js?v=routing-v05-20261112-1';
-import { categoryLabel, managerLabel } from './routing.js?v=routing-v05-20261112-1';
-import { t } from './i18n.js?v=routing-v05-20261112-1';
+import { getAdminTickets, getAdminStats, getManagers, getManagerTickets } from './api.js?v=admin-tabs-20261112-1';
+import { categoryLabel, managerLabel } from './routing.js?v=admin-tabs-20261112-1';
+import { t } from './i18n.js?v=admin-tabs-20261112-1';
 
 const screen = document.querySelector('#admin-screen');
 const filter = document.querySelector('#admin-status-filter');

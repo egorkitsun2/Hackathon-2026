@@ -1,4 +1,4 @@
-import { t } from './i18n.js?v=routing-v05-20261112-1';
+import { t } from './i18n.js?v=admin-tabs-20261112-1';
 
 const systemTheme = matchMedia('(prefers-color-scheme: dark)');
 let preference = null;

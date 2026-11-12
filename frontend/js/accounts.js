@@ -1,5 +1,5 @@
-import { changePassword, getUsers, createUser, updateUser, resetUserPassword, normalizePhone } from './api.js?v=routing-v05-20261112-1';
-import { t } from './i18n.js?v=routing-v05-20261112-1';
+import { changePassword, getUsers, createUser, updateUser, resetUserPassword, normalizePhone, hasManagerAssignments } from './api.js?v=admin-tabs-20261112-1';
+import { t } from './i18n.js?v=admin-tabs-20261112-1';
 
 const $ = id => document.querySelector(`#${id}`);
 let version = 0;
@@ -20,6 +20,17 @@ let resetVersion = 0;
 let resetController = null;
 let resetTimer = null;
 const resetDialog = $('reset-password-dialog');
+const blockDialog = $('block-manager-dialog');
+let blockTarget = null, blockWarning = '';
+
+function clearBlock() {
+  blockTarget = null; blockWarning = '';
+  $('block-manager-person').textContent = ''; $('block-manager-warning').textContent = '';
+  blockDialog.close();
+}
+function cancelBlock() {
+  clearBlock(); changingUser = null; notice('users-action-status'); renderAccounts();
+}
 
 function clearReset() {
   resetController?.abort();
@@ -89,6 +100,8 @@ function clearSecret() {
 }
 
 export function renderAccounts() {
+  $('block-manager-person').textContent = blockTarget?.full_name ?? '';
+  $('block-manager-warning').textContent = blockWarning ? t(blockWarning) : '';
   for (const id of ['current-password', 'new-password', 'repeat-password', 'user-phone', 'user-full_name', 'user-department', 'user-position', 'user-role']) {
     $(id).setAttribute('aria-invalid', String(Boolean(errors[id])));
     $(`${id}-error`).textContent = errors[id] ? t(errors[id]) : '';
@@ -96,11 +109,11 @@ export function renderAccounts() {
   }
   for (const id of ['change-password-status', 'create-user-status', 'users-status', 'users-action-status', 'reset-copy-status']) {
     const value = notices[id];
-    $(id).dataset.tone = /Uncertain|Conflict/.test(value?.key ?? '') ? 'warning' : /Error|Failed|Invalid|Wrong|Exists|Forbidden|NotFound|Unavailable/.test(value?.key ?? '') ? 'error' : /Saved|Copied/.test(value?.key ?? '') ? 'success' : 'info';
+    $(id).dataset.tone = /Uncertain|Conflict/.test(value?.key ?? '') || value?.key === 'managerBlockedTransfer' ? 'warning' : /Error|Failed|Invalid|Wrong|Exists|Forbidden|NotFound|Unavailable/.test(value?.key ?? '') ? 'error' : /Saved|Copied/.test(value?.key ?? '') ? 'success' : 'info';
     $(id).textContent = value?.key ? t(value.key) + (value.seconds != null ? ` ${t('retrySeconds')} ${value.seconds}` : '') : '';
   }
   $('change-password-fields').disabled = pending;
-  $('create-user-fields').disabled = pending || resetting || !$('user-created').hidden;
+  $('create-user-fields').disabled = pending || resetting || changingUser !== null || !$('user-created').hidden;
   $('users-role-filter').disabled = loading || pending || resetting || changingUser !== null || !$('user-created').hidden;
   $('users-list-title').dataset.i18n = listedRole === 'manager' ? 'managerListTitle' : 'employeeListTitle';
   $('users-list-title').textContent = t($('users-list-title').dataset.i18n);
@@ -165,6 +178,7 @@ async function loadUsers() {
 }
 
 export function closeAccounts() {
+  clearBlock();
   $('create-user-panel').open = false;
   clearReset(); resetting = false;
   version++; readId++; active = ''; onChanged = null; page = 1; result = null;
@@ -209,7 +223,7 @@ $('change-password-form').addEventListener('submit', async event => {
 
 $('create-user-form').addEventListener('submit', async event => {
   event.preventDefault();
-  if (pending || resetting || active !== 'users' || !$('user-created').hidden) return;
+  if (pending || resetting || changingUser !== null || active !== 'users' || !$('user-created').hidden) return;
   const values = Object.fromEntries(['phone', 'full_name', 'department', 'position'].map(key => [key, $(`user-${key}`).value]));
   values.role = $('user-role').value || 'employee';
   errors = validateEmployee(values); notice('create-user-status');
@@ -240,13 +254,27 @@ $('create-user-form').addEventListener('submit', async event => {
 
 async function toggleUser(user) {
   if (active !== 'users' || pending || resetting || changingUser !== null || loading) return;
+  if (user.role !== 'manager' || !user.is_active) return saveUserState(user);
+  const generation = version;
+  changingUser = user.id; notice('users-action-status', 'checkingManagerAssignments'); renderAccounts();
+  let assigned;
+  try { assigned = await hasManagerAssignments(user.id); }
+  catch { assigned = null; }
+  if (generation !== version) return;
+  if (assigned === false) { changingUser = null; return saveUserState(user); }
+  blockTarget = user; blockWarning = assigned ? 'blockManagerAssignedWarning' : 'blockManagerUnknownWarning';
+  notice('users-action-status'); renderAccounts(); blockDialog.showModal(); $('cancel-block-manager').focus();
+}
+
+async function saveUserState(user, warnAssignments = false) {
+  if (active !== 'users' || pending || resetting || changingUser !== null || loading) return;
   const generation = version;
   changingUser = user.id; notice('users-action-status', 'savingAccount'); renderAccounts();
   try {
     const response = await updateUser(user.id, !user.is_active);
     if (generation !== version) return;
     if (result) result.data = result.data.map(item => item.id === user.id ? response.data.user : item);
-    notice('users-action-status', 'accountSaved');
+    notice('users-action-status', warnAssignments ? 'managerBlockedTransfer' : 'accountSaved');
     globalThis.window?.dispatchEvent(new Event('staff-directory-changed'));
   } catch (error) {
     if (generation !== version) return;
@@ -256,6 +284,15 @@ async function toggleUser(user) {
     if (generation === version) { changingUser = null; renderAccounts(); }
   }
 }
+
+$('cancel-block-manager').addEventListener('click', cancelBlock);
+blockDialog.addEventListener('cancel', event => { event.preventDefault(); cancelBlock(); });
+blockDialog.addEventListener('close', () => { if (!blockDialog.open && blockTarget) cancelBlock(); });
+$('confirm-block-manager').addEventListener('click', () => {
+  if (!blockDialog.open || !blockTarget || active !== 'users') return;
+  const target = blockTarget; clearBlock(); changingUser = null;
+  return saveUserState(target, true);
+});
 
 $('close-user-created').addEventListener('click', () => { clearSecret(); renderAccounts(); $('user-full_name').focus(); });
 $('user-result-dialog').addEventListener('close', () => {

@@ -62,3 +62,23 @@ test('invalid selection never writes; language render preserves draft; late resp
   resolve({ data: [{ category: 'it', manager_id: 7 }] }); await flush();
   assert.equal(h.forms().length, 0); assert.equal(h.get('#category-managers-panel').hidden, true);
 });
+
+
+test('explicit removal sends one null PATCH and disables removal only after the acknowledged clear', async () => {
+  let calls=0,finish;
+  const h=harness({updateRouting:(category,id)=>{calls++;assert.equal(category,'it');assert.equal(id,null);return new Promise(resolve=>{finish=resolve;});}});
+  h.context.openRouting();await flush();
+  const remove=h.forms()[0].children[4].children[1];assert.equal(remove.disabled,false);
+  const work=remove.events.click();await remove.events.click();assert.equal(calls,1);
+  assert.notEqual(h.get('#category-managers-status').textContent,'ru:assignmentSaved');
+  finish({data:{category:'it',manager_id:null}});await work;
+  assert.equal(h.forms()[0].children[2].value,'');assert.equal(h.forms()[0].children[4].children[1].disabled,true);
+  assert.equal(h.forms()[0].children[5].textContent,'ru:unassignedRoutingHint');
+});
+
+test('blocked assignment is displayed and removable without offering a blocked manager as a new target', async () => {
+  const h=harness();h.context.openRouting();await flush();
+  const form=h.forms()[1];assert.equal(form.children[1].dataset.blocked,'true');
+  assert.equal(form.children[2].children.find(option=>option.value==='8').disabled,true);
+  assert.equal(form.children[5].textContent,'ru:blockedRoutingHint');assert.equal(form.children[4].children[1].disabled,false);
+});

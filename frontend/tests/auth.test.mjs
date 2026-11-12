@@ -235,3 +235,18 @@ test('manager restores own queue and details, rejects admin/create routes and ha
   const temporary=harness({restoredUser:{id:7,role:'manager'},hash:'#/manager/tickets/124',required:true});await flush();
   assert.equal(temporary.location.hash,'#/change-password');assert.equal(temporary.managersOpened.length,0);assert.equal(temporary.detailsOpened.length,0);
 });
+
+
+test('administrator users and routing are separate SPA destinations and other roles cannot open them', async () => {
+  const h=harness({restoredUser:{id:3,role:'admin'},hash:'#/admin/routing'});await flush();
+  assert.equal(h.location.hash,'#/admin/routing');assert.equal(h.get('#routing-screen').hidden,false);
+  assert.equal(h.get('#users-screen').hidden,true);assert.equal(h.get('#admin-screen').hidden,true);
+  h.location.hash='#/admin/users';h.handlers.hashchange();
+  assert.equal(h.get('#users-screen').hidden,false);assert.equal(h.get('#routing-screen').hidden,true);
+  h.location.hash='#/admin/routing';h.handlers.hashchange();assert.equal(h.get('#routing-screen').hidden,false);
+  for(const role of ['employee','manager']){
+    const denied=harness({restoredUser:{id:7,role},hash:'#/admin/routing'});await flush();
+    assert.equal(denied.get('#routing-screen').hidden,true);assert.equal(denied.get('#users-screen').hidden,true);
+    assert.equal(denied.location.hash,role==='manager'?'#/manager':'#/employee');
+  }
+});
