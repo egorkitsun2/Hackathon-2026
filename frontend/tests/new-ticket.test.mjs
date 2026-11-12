@@ -25,14 +25,14 @@ function harness(createTicket = async () => ({ data: { id: 42 } })) {
       setAttribute(key, value) { this.attributes[key] = value; },
       removeAttribute(key) { delete this.attributes[key]; },
       focus() { focused = selector; },
-      reset() { for (const name of ['type', 'title', 'description']) get(`#ticket-${name}`).value = ''; },
+      reset() { for (const name of ['type', 'category', 'title', 'description']) get(`#ticket-${name}`).value = ''; },
     });
     return elements.get(selector);
   }
   const context = vm.createContext({ document: { querySelector: get, createElement: node }, createTicket, URL: { createObjectURL(file) { const url = `blob:qa-${urls.created.length}`; urls.created.push({ file, url }); return url; }, revokeObjectURL(url) { urls.revoked.push(url); } }, TextEncoder, AbortController, uploadAttachment: async () => ({}), getTicket: async () => ({ data: { attachments: [] } }), t: key => `${language}:${key}` });
   vm.runInContext(source, context);
   function fill(values = {}) {
-    for (const [key, value] of Object.entries({ type: 'problem', title: ' Test title ', description: ' A valid description ', ...values })) get(`#ticket-${key}`).value = value;
+    for (const [key, value] of Object.entries({ type: 'problem', category: 'it', title: ' Test title ', description: ' A valid description ', ...values })) get(`#ticket-${key}`).value = value;
   }
   context.openNewTicket();
   return { context, get, fill, urls, focused: () => focused, setLanguage: value => { language = value; }, submit: () => get('#new-ticket-form').events.submit({ preventDefault() {} }) };
@@ -40,7 +40,7 @@ function harness(createTicket = async () => ({ data: { id: 42 } })) {
 
 test('validation trims edges, checks all lengths, and counts Unicode characters like backend', () => {
   const { context } = harness();
-  const validate = values => context.validateTicket({ type: 'problem', title: 'valid', description: 'description', ...values });
+  const validate = values => context.validateTicket({ type: 'problem', category: 'it', title: 'valid', description: 'description', ...values });
   assert.equal(Object.keys(validate({})).length, 0);
   assert.equal(validate({ type: '' }).type, 'typeRequired');
   for (const length of [0, 4, 121]) assert.equal(validate({ title: 'x'.repeat(length) }).title, 'titleLengthError');
@@ -188,7 +188,7 @@ test('over-limit counter styling agrees with validation and resets on clearing a
   assert.equal(h.get('#ticket-title-counter').dataset.exceeded, 'true');
   assert.equal(h.get('#ticket-description-counter').dataset.exceeded, 'true');
   assert.equal(h.get('#ticket-title-counter').textContent, '121 / 120');
-  assert.ok(h.context.validateTicket({ type: 'problem', title: h.get('#ticket-title').value, description: h.get('#ticket-description').value }).title);
+  assert.ok(h.context.validateTicket({ type: 'problem', category: 'it', title: h.get('#ticket-title').value, description: h.get('#ticket-description').value }).title);
   h.get('#ticket-title').value = '   '; h.get('#ticket-title').events.input();
   assert.equal(h.get('#ticket-title-counter').textContent, '0 / 120');
   assert.equal(h.get('#ticket-title-counter').dataset.exceeded, 'false');
@@ -279,7 +279,18 @@ test('writing prompts match existing types, change language and never overwrite 
   h.setLanguage('kk'); h.context.renderNewTicket();
   assert.equal(h.get('#ticket-help-prompts').children[0].textContent, 'kk:helpGratitudeWho');
   await h.submit();
-  assert.deepEqual({ ...sent }, { type: 'gratitude', title, description });
+  assert.deepEqual({ ...sent }, { type: 'gratitude', category: 'it', title, description });
   h.context.resetNewTicket(); assert.equal(h.get('#ticket-writing-help').open, false);
   assert.equal(h.get('#ticket-help-prompts').hidden, true);
+});
+
+
+test('direction is required and unsupported or arbitrary assignment inputs are never submitted', async () => {
+  let sent;
+  const h=harness(async values=>{sent=values;return {data:{id:42}};});
+  h.fill({category:''});await h.submit();assert.equal(sent,undefined);assert.equal(h.focused(),'#ticket-category');
+  h.fill({category:'unknown'});await h.submit();assert.equal(sent,undefined);
+  h.fill({category:'procurement'});h.setLanguage('kk');h.context.renderNewTicket();
+  assert.equal(h.get('#ticket-category').value,'procurement');await h.submit();assert.equal(sent.category,'procurement');
+  assert.equal('assigned_to' in sent,false);assert.equal('manager_id' in sent,false);
 });

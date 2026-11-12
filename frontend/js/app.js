@@ -1,11 +1,12 @@
-import { openAccounts, closeAccounts, renderAccounts } from './accounts.js?v=saved-previews-20261112-1';
-import { initTheme, renderThemeToggle } from './theme.js?v=saved-previews-20261112-1';
-import { login, logout, getMe, normalizePhone, invalidateSessionRequests } from './api.js?v=saved-previews-20261112-1';
-import { setLanguage, t } from './i18n.js?v=saved-previews-20261112-1';
-import { openEmployee, closeEmployee, renderEmployee } from './employee.js?v=saved-previews-20261112-1';
-import { openNewTicket, closeNewTicket, resetNewTicket, renderNewTicket } from './new-ticket.js?v=saved-previews-20261112-1';
-import { openTicketDetails, closeTicketDetails, renderTicketDetails } from './ticket.js?v=saved-previews-20261112-1';
-import { openAdminQueue, closeAdminQueue, renderAdminQueue } from './admin.js?v=saved-previews-20261112-1';
+import { openRouting, closeRouting, renderRouting } from './routing.js?v=routing-v05-20261112-1';
+import { openAccounts, closeAccounts, renderAccounts } from './accounts.js?v=routing-v05-20261112-1';
+import { initTheme, renderThemeToggle } from './theme.js?v=routing-v05-20261112-1';
+import { login, logout, getMe, normalizePhone, invalidateSessionRequests } from './api.js?v=routing-v05-20261112-1';
+import { setLanguage, t } from './i18n.js?v=routing-v05-20261112-1';
+import { openEmployee, closeEmployee, renderEmployee } from './employee.js?v=routing-v05-20261112-1';
+import { openNewTicket, closeNewTicket, resetNewTicket, renderNewTicket } from './new-ticket.js?v=routing-v05-20261112-1';
+import { openTicketDetails, openManagerTicketDetails, closeTicketDetails, renderTicketDetails } from './ticket.js?v=routing-v05-20261112-1';
+import { openAdminQueue, openManagerQueue, closeAdminQueue, renderAdminQueue } from './admin.js?v=routing-v05-20261112-1';
 
 const form = document.querySelector('#login-form');
 const phone = document.querySelector('#phone');
@@ -81,6 +82,7 @@ document.querySelectorAll('[data-language]').forEach((button) => {
     renderTicketDetails();
     renderAdminQueue();
     renderAccounts();
+    renderRouting();
     renderLoginCooldown();
     renderThemeToggle();
   });
@@ -143,7 +145,7 @@ form.addEventListener('submit', async (event) => {
     password.value = '';
     password.type = 'password';
     renderPasswordToggle();
-    history.replaceState(null, '', user.role === 'admin' ? '#/admin' : '#/employee');
+    history.replaceState(null, '', user.role === 'admin' ? '#/admin' : user.role === 'manager' ? '#/manager' : '#/employee');
     route();
   } catch (error) {
     if (error.message === 'RATE_LIMITED') {
@@ -169,6 +171,8 @@ function route() {
   const changing = Boolean(user && passwordChangeRequired);
   const employee = !changing && user?.role === 'employee';
   const admin = !changing && user?.role === 'admin';
+  const manager = !changing && user?.role === 'manager';
+  const staff = admin || manager;
   const managing = admin && location.hash === '#/admin/users';
   document.querySelector('#workspace-nav').hidden = !user || changing;
   document.querySelectorAll('[data-nav-role]').forEach(link => {
@@ -178,9 +182,9 @@ function route() {
   });
   const creating = employee && location.hash === '#/new-ticket';
   if (!creating) closeNewTicket();
-  const detailMatch = employee ? location.hash.match(/^#\/tickets\/(\d+)$/) : admin ? location.hash.match(/^#\/admin\/tickets\/(\d+)$/) : null;
+  const detailMatch = employee ? location.hash.match(/^#\/tickets\/(\d+)$/) : admin ? location.hash.match(/^#\/admin\/tickets\/(\d+)$/) : manager ? location.hash.match(/^#\/manager\/tickets\/(\d+)$/) : null;
   const viewing = Boolean(detailMatch);
-  const target = changing ? '#/change-password' : managing ? '#/admin/users' : employee ? (creating ? '#/new-ticket' : viewing ? location.hash : '#/employee') : admin ? (viewing ? location.hash : '#/admin') : '#/login';
+  const target = changing ? '#/change-password' : managing ? '#/admin/users' : employee ? (creating ? '#/new-ticket' : viewing ? location.hash : '#/employee') : admin ? (viewing ? location.hash : '#/admin') : manager ? (viewing ? location.hash : '#/manager') : '#/login';
   if (!restoringSession && location.hash !== target) history.replaceState(null, '', target);
   document.querySelector('#login-screen').hidden = restoringSession || Boolean(user);
   document.querySelector('#change-password-screen').hidden = !changing;
@@ -188,13 +192,14 @@ function route() {
   document.querySelector('#employee-screen').hidden = !employee || creating || viewing;
   document.querySelector('#new-ticket-screen').hidden = !creating;
   document.querySelector('#ticket-detail-screen').hidden = !viewing;
-  document.querySelector('#admin-screen').hidden = !admin || viewing || managing;
+  document.querySelector('#admin-screen').hidden = !staff || viewing || managing;
   document.body.classList.toggle('employee-screen', employee || viewing);
-  document.body.classList.toggle('admin-screen', admin && !viewing);
+  document.body.classList.toggle('admin-screen', staff && !viewing);
   logoutButton.hidden = !user;
   closeEmployee(!employee);
   closeTicketDetails();
-  closeAdminQueue(!admin);
+  closeAdminQueue(!staff);
+  if (managing) openRouting(); else closeRouting();
   if (changing || managing) {
     resetNewTicket();
     openAccounts(changing ? 'password' : 'users', response => {
@@ -207,10 +212,17 @@ function route() {
   }
   closeAccounts();
   if (creating) openNewTicket();
+  else if (viewing && manager) openManagerTicketDetails(detailMatch[1]);
   else if (viewing) openTicketDetails(detailMatch[1], admin);
   else if (employee) openEmployee(user);
   else if (admin) openAdminQueue(user);
+  else if (manager) openManagerQueue(user);
 }
+
+window.addEventListener('ticket-access-lost', () => {
+  if (user?.role !== 'manager') return;
+  history.replaceState(null, '', '#/manager'); route(); showStatus(sessionStatus, 'ticketAccessLost');
+});
 
 window.addEventListener('password-change-required', () => {
   if (!user) return;

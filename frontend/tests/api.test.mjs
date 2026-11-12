@@ -37,7 +37,7 @@ test('account mutations send only contract fields and leave password bytes uncha
     return Response.json({ data: { user: { id: 4 } } });
   };
   try {
-    await api.createUser({ phone: '87000000004', full_name: ' Name ', department: ' Team ', position: ' Tester ', role: 'admin', password: 'ignored' });
+    await api.createUser({ phone: '87000000004', full_name: ' Name ', department: ' Team ', position: ' Tester ', password: 'ignored' });
     await api.updateUser(4, false);
     await api.changePassword({ current_password: ' old ', new_password: ' new-password-123 ', repeat_password: 'ignored' });
     assert.deepEqual(requests, [
@@ -106,11 +106,11 @@ test('creation sends exactly the allowed fields and preserves backend validation
   globalThis.fetch = async (url, options) => {
     assert.equal(url, '/api/v1/tickets');
     assert.equal(options.method, 'POST');
-    assert.deepEqual(JSON.parse(options.body), { type: 'problem', title: 'Title', description: 'Description' });
+    assert.deepEqual(JSON.parse(options.body), { type: 'problem', title: 'Title', description: 'Description', category: 'it' });
     return Response.json({ error: { code: 'VALIDATION_ERROR', details: { title: 'TITLE_TOO_SHORT' } } }, { status: 400 });
   };
   try {
-    await assert.rejects(api.createTicket({ type: 'problem', title: ' Title ', description: ' Description ', author_id: 99, status: 'resolved' }), error => error.message === 'VALIDATION_ERROR' && error.details.title === 'TITLE_TOO_SHORT');
+    await assert.rejects(api.createTicket({ type: 'problem', category: 'it', title: ' Title ', description: ' Description ', author_id: 99, status: 'resolved' }), error => error.message === 'VALIDATION_ERROR' && error.details.title === 'TITLE_TOO_SHORT');
   } finally { globalThis.fetch = previous; }
 });
 
@@ -234,4 +234,37 @@ test('preview reads protected image blobs with same-origin credentials and rejec
     globalThis.fetch=async()=>Response.json({error:{code:'NOT_FOUND'}},{status:404});
     await assert.rejects(api.getAttachmentPreview(124,7),/NOT_FOUND/);
   }finally{globalThis.fetch=previous;}
+});
+
+
+test('v0.5 uses exact manager, rule and assignment endpoints with no arbitrary extra fields', async () => {
+  const previous=globalThis.fetch,calls=[];
+  globalThis.fetch=async(url,options)=>{calls.push({url,method:options.method??'GET',body:options.body?JSON.parse(options.body):undefined});return Response.json({data:{id:7}});};
+  try {
+    await api.createUser({phone:'87000000004',full_name:' IT ',department:' QA ',position:' Manager ',role:'manager',is_active:true});
+    await api.getUsers(2,'manager'); await api.getManagerTickets({status:'new'});
+    await api.getAdminTickets({unassigned:true,status:'new'});
+    await api.updateRouting('it',7);await api.updateRouting('procurement',null);
+    await api.assignTicket(124,8);await api.assignTicket(124,null);
+    await api.updateTicketStatus(124,{status:'resolved',comment:'  Resolved by manager.  '},'manager');
+    assert.deepEqual(calls.slice(4,8).map(x=>[x.url,x.body]),[
+      ['/api/v1/admin/routing/it',{manager_id:7}],['/api/v1/admin/routing/procurement',{manager_id:null}],
+      ['/api/v1/admin/tickets/124/assignment',{assigned_to:8}],['/api/v1/admin/tickets/124/assignment',{assigned_to:null}]
+    ]);
+    assert.equal(calls[0].body.role,'manager');assert.equal('is_active' in calls[0].body,false);
+    assert.match(calls[1].url,/role=manager/);assert.match(calls[2].url,/\/manager\/tickets/);assert.match(calls[3].url,/unassigned=true/);
+    assert.deepEqual(calls.at(-1).body,{status:'resolved',comment:'Resolved by manager.'});assert.equal(calls.at(-1).url,'/api/v1/manager/tickets/124');
+    const count=calls.length;
+    assert.throws(()=>api.createUser({role:'admin'}),/VALIDATION_ERROR/);
+    assert.throws(()=>api.createTicket({type:'problem',title:'Title',description:'Description'}),/VALIDATION_ERROR/);
+    for(const id of ['7',0,-1,undefined,{}]) assert.throws(()=>api.updateRouting('it',id),/VALIDATION_ERROR/);
+    assert.throws(()=>api.updateRouting('unknown',7),/VALIDATION_ERROR/);
+    assert.equal(calls.length,count);
+  } finally {globalThis.fetch=previous;}
+});
+
+test('manager directory fetches every page instead of silently truncating choices at twenty', async () => {
+  const previous=globalThis.fetch,urls=[];
+  globalThis.fetch=async url=>{urls.push(url);return Response.json({data:urls.length===1?Array.from({length:20},(_,id)=>({id:id+1,role:'manager'})):[{id:21,role:'manager'}],pagination:{page:urls.length,limit:20,total:21}});};
+  try {const result=await api.getManagers();assert.equal(result.length,21);assert.equal(urls.length,2);assert.match(urls[1],/page=2.*role=manager/);}finally{globalThis.fetch=previous;}
 });

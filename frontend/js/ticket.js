@@ -1,6 +1,7 @@
-import { validateAttachment } from './attachment-validation.js?v=saved-previews-20261112-1';
-import { getTicket, updateTicketStatus, uploadAttachment, getAttachmentPreview } from './api.js?v=saved-previews-20261112-1';
-import { t } from './i18n.js?v=saved-previews-20261112-1';
+import { validateAttachment } from './attachment-validation.js?v=routing-v05-20261112-1';
+import { getTicket, updateTicketStatus, uploadAttachment, getAttachmentPreview, assignTicket, getManagers } from './api.js?v=routing-v05-20261112-1';
+import { categoryLabel, managerLabel, fillManagerSelect, selectedManager } from './routing.js?v=routing-v05-20261112-1';
+import { t } from './i18n.js?v=routing-v05-20261112-1';
 
 const screen = document.querySelector('#ticket-detail-screen');
 const content = document.querySelector('#ticket-detail-content');
@@ -13,6 +14,33 @@ let ticketId = null;
 let state = '';
 let requestId = 0;
 let adminView = false;
+let ticketReader = getTicket;
+let statusWriter = updateTicketStatus;
+let reviewRole = 'employee', managers = [], assignmentPending = false, assignmentNotice = '', assignmentError = '';
+let assignmentDraft = '';
+let directoryVersion = 0, directoryState = '';
+
+async function loadTicketManagers() {
+  if (reviewRole !== 'admin') return;
+  const version = ++directoryVersion;
+  managers = []; directoryState = 'loadingManagers'; renderAssignment();
+  try {
+    const users = await getManagers();
+    if (version !== directoryVersion || reviewRole !== 'admin') return;
+    managers = users; directoryState = ''; renderTicketDetails();
+  } catch (error) {
+    if (version !== directoryVersion || reviewRole !== 'admin') return;
+    if (error.message === 'FORBIDDEN') { closeTicketDetails(); state = 'ticketForbidden'; renderTicketDetails(); }
+    else { directoryState = 'managersError'; renderAssignment(); }
+  }
+}
+
+function lostAccess(error) {
+  if (reviewRole !== 'manager' || !['NOT_FOUND', 'FORBIDDEN'].includes(error.message)) return false;
+  closeTicketDetails();
+  globalThis.window?.dispatchEvent(new Event('ticket-access-lost'));
+  return true;
+}
 const actions = document.querySelector('#admin-ticket-actions');
 const takeButton = document.querySelector('#take-ticket');
 const decisionForm = document.querySelector('#ticket-decision-form');
@@ -48,8 +76,9 @@ function loadAttachmentPreview(file, container) {
     if (id !== requestId || attachmentPreviews.get(file.id) !== entry) return;
     entry.url = URL.createObjectURL(blob); entry.state = 'ready';
     renderSavedImage(file, entry);
-  }).catch(() => {
+  }).catch(error => {
     if (id !== requestId || attachmentPreviews.get(file.id) !== entry) return;
+    if (lostAccess(error)) return;
     entry.state = 'error'; renderSavedImage(file, entry);
   });
   return entry;
@@ -120,11 +149,11 @@ function renderActions() {
   actionStatus.textContent = feedback ? t(feedback) : '';
   actions.hidden = !adminView || !ticket;
   takeButton.hidden = ticket?.status !== 'new';
-  takeButton.disabled = saving;
+  takeButton.disabled = saving || assignmentPending || !statusWriter;
   takeButton.dataset.i18n = saving ? 'savingDecision' : 'takeTicket';
   takeButton.textContent = t(takeButton.dataset.i18n);
   decisionForm.hidden = ticket?.status !== 'in_review';
-  decisionFields.disabled = saving;
+  decisionFields.disabled = saving || assignmentPending || !statusWriter;
   saveButton.dataset.i18n = saving ? 'savingDecision' : 'saveDecision';
   saveButton.textContent = t(saveButton.dataset.i18n);
   document.querySelector('#ticket-closed-note').hidden = !['resolved', 'rejected'].includes(ticket?.status);
@@ -143,6 +172,51 @@ function textElement(tag, text, className) {
   return element;
 }
 
+function renderAssignment() {
+  const panel = document.querySelector('#ticket-assignment-panel');
+  panel.hidden = reviewRole !== 'admin' || !ticket;
+  const select = document.querySelector('#ticket-assignee');
+  if (panel.hidden) select.replaceChildren();
+  else fillManagerSelect(select, managers, assignmentDraft);
+  document.querySelector('#ticket-assignment-fields').disabled = assignmentPending || saving || Boolean(directoryState);
+  document.querySelector('#retry-ticket-managers').hidden = panel.hidden || directoryState !== 'managersError';
+  select.setAttribute('aria-invalid', String(Boolean(assignmentError)));
+  document.querySelector('#ticket-assignee-error').textContent = assignmentError ? t(assignmentError) : '';
+  document.querySelector('#ticket-assignee-error').hidden = !assignmentError;
+  const message = document.querySelector('#ticket-assignment-status');
+  message.textContent = directoryState ? t(directoryState) : assignmentNotice ? t(assignmentNotice) : '';
+  message.dataset.tone = directoryState ? (directoryState === 'managersError' ? 'error' : 'info') : assignmentNotice === 'assignmentSaved' ? 'success' : assignmentNotice === 'assignmentUncertain' ? 'warning' : 'error';
+}
+
+document.querySelector('#ticket-assignee').addEventListener('change', event => {
+  assignmentDraft = event.target.value; assignmentError = ''; assignmentNotice = ''; renderAssignment();
+});
+document.querySelector('#ticket-assignment-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  if (reviewRole !== 'admin' || !ticket || assignmentPending || saving || directoryState) return;
+  let target;
+  try { target = selectedManager(assignmentDraft, managers); }
+  catch { assignmentError = 'managerRequired'; renderAssignment(); document.querySelector('#ticket-assignee').focus(); return; }
+  const version = requestId;
+  assignmentPending = true; assignmentNotice = ''; assignmentError = ''; renderAssignment(); renderActions();
+  try {
+    await assignTicket(ticket.id, target);
+    if (version !== requestId) return;
+    assignmentPending = false; assignmentNotice = 'assignmentSaved'; await loadTicket();
+  } catch (error) {
+    if (version !== requestId) return;
+    assignmentPending = false;
+    if (error.message === 'VALIDATION_ERROR') { assignmentError = 'managerRequired'; renderAssignment(); }
+    else if (error.message === 'FORBIDDEN') { ticket = null; state = 'ticketForbidden'; renderTicketDetails(); }
+    else if (error.message === 'NOT_FOUND') { ticket = null; state = 'ticketNotFound'; renderTicketDetails(); }
+    else {
+      assignmentNotice = error.status === 409 ? 'assignmentConflict' : ['NETWORK_ERROR', 'API_UNAVAILABLE', 'INTERNAL_ERROR'].includes(error.message) ? 'assignmentUncertain' : 'assignmentError';
+      await loadTicket();
+    }
+  } finally { if (version === requestId) { assignmentPending = false; renderAssignment(); renderActions(); } }
+});
+document.querySelector('#retry-ticket-managers').addEventListener('click', () => { if (!assignmentPending && !saving) loadTicketManagers(); });
+
 function formatDate(date) {
   return new Intl.DateTimeFormat(document.documentElement.lang === 'kk' ? 'kk-KZ' : 'ru-KZ', {
     dateStyle: 'medium', timeStyle: 'short',
@@ -152,15 +226,19 @@ function formatDate(date) {
 export function renderTicketDetails() {
   renderAttachments();
   renderActions();
+  renderAssignment();
   statusPanel.hidden = !state;
   status.textContent = state ? t(state) : '';
   retry.hidden = state !== 'ticketLoadError';
   content.hidden = !ticket;
   historyList.replaceChildren();
   if (!ticket) return;
+  document.querySelector('#detail-routing').hidden = !ticket.category;
+  document.querySelector('#detail-category').textContent = ticket.category ? categoryLabel(ticket.category) : '';
+  document.querySelector('#detail-assignee').textContent = reviewRole === 'admin' ? managerLabel(ticket.assigned_to, managers) : t(ticket.assigned_to == null ? 'noResponsibleManager' : 'responsibleAssigned');
   const authorBlock = document.querySelector('#detail-author-block');
-  authorBlock.hidden = !adminView || !ticket.author;
-  if (adminView && ticket.author) {
+  authorBlock.hidden = reviewRole !== 'admin' || !ticket.author;
+  if (reviewRole === 'admin' && ticket.author) {
     document.querySelector('#detail-author-name').textContent = ticket.author.full_name;
     document.querySelector('#detail-author-position').textContent = `${ticket.author.department} · ${ticket.author.position}`;
   }
@@ -203,13 +281,16 @@ async function loadTicket(message = '') {
   screen.setAttribute('aria-busy', 'true');
   renderTicketDetails();
   try {
-    const response = await getTicket(ticketId);
+    if (!ticketReader) throw new Error('ROUTING_UNAVAILABLE');
+    const response = await ticketReader(ticketId);
     if (id !== requestId) return;
     ticket = response.data;
+    assignmentDraft = ticket.assigned_to == null ? '' : String(ticket.assigned_to);
     state = '';
   } catch (error) {
     if (id !== requestId) return;
-    state = error.message === 'NOT_FOUND' ? 'ticketNotFound' : 'ticketLoadError';
+    if (lostAccess(error)) return;
+    state = error.message === 'ROUTING_UNAVAILABLE' ? 'routingUnavailable' : error.message === 'NOT_FOUND' ? 'ticketNotFound' : error.message === 'FORBIDDEN' ? 'ticketForbidden' : 'ticketLoadError';
   } finally {
     if (id === requestId) {
       screen.removeAttribute('aria-busy');
@@ -220,12 +301,30 @@ async function loadTicket(message = '') {
 
 export function openTicketDetails(id, admin = false) {
   adminView = admin;
+  directoryVersion++; directoryState = ''; managers = [];
+  reviewRole = admin ? 'admin' : 'employee';
+  ticketReader = getTicket;
+  statusWriter = updateTicketStatus;
   document.querySelector('#detail-back').href = admin ? '#/admin' : '#/employee';
+  ticketId = id;
+  loadTicket();
+  if (admin) loadTicketManagers();
+}
+
+export function openManagerTicketDetails(id, { readTicket = getTicket, updateStatus = (id, body) => updateTicketStatus(id, body, 'manager') } = {}) {
+  adminView = true;
+  reviewRole = 'manager';
+  directoryVersion++; directoryState = ''; managers = [];
+  ticketReader = readTicket;
+  statusWriter = updateStatus;
+  document.querySelector('#detail-back').href = '#/manager';
   ticketId = id;
   loadTicket();
 }
 
 export function closeTicketDetails() {
+  directoryVersion++; directoryState = '';
+  reviewRole = 'employee'; managers = []; assignmentPending = false; assignmentNotice = ''; assignmentError = ''; assignmentDraft = '';
   clearAttachmentPreviews();
   uploadVersion++;
   uploadController?.abort();
@@ -246,7 +345,7 @@ export function closeTicketDetails() {
   screen.removeAttribute('aria-busy');
   // Clear private text as well as hiding it when leaving a ticket or signing out.
   document.querySelector('#detail-author-block').hidden = true;
-  for (const selector of ['#detail-meta', '#detail-title', '#detail-date', '#detail-status', '#detail-description', '#detail-response', '#detail-author-name', '#detail-author-position']) {
+  for (const selector of ['#detail-meta', '#detail-title', '#detail-date', '#detail-status', '#detail-description', '#detail-response', '#detail-author-name', '#detail-author-position', '#detail-category', '#detail-assignee']) {
     document.querySelector(selector).textContent = '';
   }
   renderTicketDetails();
@@ -255,7 +354,7 @@ export function closeTicketDetails() {
 retry.addEventListener('click', () => loadTicket(feedback));
 
 async function saveStatus(nextStatus) {
-  if (!adminView || !ticket || saving) return;
+  if (!adminView || !ticket || saving || assignmentPending || !statusWriter) return;
   const allowed = ticket.status === 'new' ? nextStatus === 'in_review'
     : ticket.status === 'in_review' && ['resolved', 'rejected'].includes(nextStatus);
   if (!allowed) return;
@@ -263,27 +362,30 @@ async function saveStatus(nextStatus) {
   saving = true;
   feedback = '';
   actions.setAttribute('aria-busy', 'true');
-  renderActions();
+  renderActions(); renderAssignment();
   try {
-    await updateTicketStatus(ticket.id, { status: nextStatus, comment: comment.value });
+    await statusWriter(ticket.id, { status: nextStatus, comment: comment.value });
     if (id !== requestId) return;
     decision.value = '';
     comment.value = '';
     await loadTicket('decisionSaved');
   } catch (error) {
     if (id !== requestId) return;
+    if (lostAccess(error)) return;
+    if (error.message === 'FORBIDDEN') { ticket = null; state = 'ticketForbidden'; renderTicketDetails(); return; }
     if (error.message === 'INVALID_TRANSITION') await loadTicket('decisionConflict');
     else if (['NETWORK_ERROR', 'API_UNAVAILABLE', 'INTERNAL_ERROR', 'NOT_FOUND'].includes(error.message)) {
       await loadTicket('decisionUncertain');
     } else {
       if (error.message === 'VALIDATION_ERROR' && error.details?.comment) commentError = 'decisionCommentError';
+      if (error.message === 'VALIDATION_ERROR' && error.details?.status) decisionError = 'decisionRequired';
       feedback = ({ VALIDATION_ERROR: 'decisionValidationError', FORBIDDEN: 'adminForbidden',
         UNAUTHORIZED: 'sessionExpired', ACCOUNT_DISABLED: 'accountDisabled', INVALID_ORIGIN: 'invalidOrigin',
         RATE_LIMITED: 'rateLimited', SERVICE_UNAVAILABLE: 'serviceUnavailable' })[error.message] ?? 'decisionSaveError';
     }
   } finally {
     // A refreshed detail or another route owns its own request state.
-    if (id === requestId) { saving = false; renderActions(); }
+    if (id === requestId) { saving = false; renderActions(); renderAssignment(); }
     if (!saving) actions.removeAttribute('aria-busy');
   }
 }

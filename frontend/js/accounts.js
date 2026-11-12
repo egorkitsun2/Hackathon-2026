@@ -1,11 +1,12 @@
-import { changePassword, getUsers, createUser, updateUser, resetUserPassword, normalizePhone } from './api.js?v=saved-previews-20261112-1';
-import { t } from './i18n.js?v=saved-previews-20261112-1';
+import { changePassword, getUsers, createUser, updateUser, resetUserPassword, normalizePhone } from './api.js?v=routing-v05-20261112-1';
+import { t } from './i18n.js?v=routing-v05-20261112-1';
 
 const $ = id => document.querySelector(`#${id}`);
 let version = 0;
 let active = '';
 let onChanged;
 let page = 1;
+let listedRole = 'employee';
 let result = null;
 let loading = false;
 let readId = 0;
@@ -35,7 +36,7 @@ function clearReset() {
 }
 
 function confirmReset(user) {
-  if (active !== 'users' || user.role !== 'employee' || pending || resetting || changingUser !== null || loading || !$('user-created').hidden) return;
+  if (active !== 'users' || !['employee', 'manager'].includes(user.role) || pending || resetting || changingUser !== null || loading || !$('user-created').hidden) return;
   clearReset();
   resetTarget = user;
   $('reset-password-person').textContent = `${user.full_name} · ${user.phone}`;
@@ -59,6 +60,7 @@ export function validatePassword(current, next, repeat) {
 
 export function validateEmployee(values) {
   const errors = {};
+  if (!['employee', 'manager'].includes(values.role ?? 'employee')) errors['user-role'] = 'roleInvalid';
   if (values.phone.length > 64 || !normalizePhone(values.phone)) errors['user-phone'] = 'phoneInvalid';
   for (const key of ['full_name', 'department', 'position']) {
     const length = Array.from(values[key].trim()).length;
@@ -87,7 +89,7 @@ function clearSecret() {
 }
 
 export function renderAccounts() {
-  for (const id of ['current-password', 'new-password', 'repeat-password', 'user-phone', 'user-full_name', 'user-department', 'user-position']) {
+  for (const id of ['current-password', 'new-password', 'repeat-password', 'user-phone', 'user-full_name', 'user-department', 'user-position', 'user-role']) {
     $(id).setAttribute('aria-invalid', String(Boolean(errors[id])));
     $(`${id}-error`).textContent = errors[id] ? t(errors[id]) : '';
     $(`${id}-error`).hidden = !errors[id];
@@ -99,6 +101,9 @@ export function renderAccounts() {
   }
   $('change-password-fields').disabled = pending;
   $('create-user-fields').disabled = pending || resetting || !$('user-created').hidden;
+  $('users-role-filter').disabled = loading || pending || resetting || changingUser !== null || !$('user-created').hidden;
+  $('users-list-title').dataset.i18n = listedRole === 'manager' ? 'managerListTitle' : 'employeeListTitle';
+  $('users-list-title').textContent = t($('users-list-title').dataset.i18n);
   $('confirm-reset-password').disabled = resetting;
   $('close-reset-password').disabled = false;
   $('close-reset-password').dataset.i18n = $('reset-password-result').hidden ? 'cancelReset' : 'closeResult';
@@ -124,7 +129,7 @@ export function renderAccounts() {
     button.textContent = t(user.is_active ? 'blockEmployee' : 'activateEmployee');
     button.disabled = changingUser !== null || loading || pending || resetting;
     button.addEventListener('click', () => toggleUser(user));
-    if (user.role === 'employee') {
+    if (['employee', 'manager'].includes(user.role)) {
       const reset = document.createElement('button');
       reset.type = 'button'; reset.className = 'secondary-button danger-ghost';
       reset.textContent = t('resetPassword');
@@ -145,12 +150,12 @@ async function loadUsers() {
   const generation = version;
   const id = ++readId;
   loading = true; result = null;
-  notice('users-status', 'loadingEmployees'); renderAccounts();
+  notice('users-status', listedRole === 'manager' ? 'loadingManagers' : 'loadingEmployees'); renderAccounts();
   try {
-    const response = await getUsers(page);
+    const response = await getUsers(page, listedRole);
     if (generation !== version || id !== readId) return;
     result = response;
-    notice('users-status', result.data.length ? '' : 'noEmployees');
+    notice('users-status', result.data.length ? '' : listedRole === 'manager' ? 'noManagers' : 'noEmployees');
   } catch (error) {
     if (generation !== version || id !== readId) return;
     notice('users-status', errorNotice(error));
@@ -163,6 +168,7 @@ export function closeAccounts() {
   $('create-user-panel').open = false;
   clearReset(); resetting = false;
   version++; readId++; active = ''; onChanged = null; page = 1; result = null;
+  listedRole = 'employee'; $('users-role-filter').value = 'employee';
   pending = false; loading = false; changingUser = null; errors = {}; notices = {};
   $('change-password-form').reset(); $('create-user-form').reset(); clearSecret(); renderAccounts();
 }
@@ -205,6 +211,7 @@ $('create-user-form').addEventListener('submit', async event => {
   event.preventDefault();
   if (pending || resetting || active !== 'users' || !$('user-created').hidden) return;
   const values = Object.fromEntries(['phone', 'full_name', 'department', 'position'].map(key => [key, $(`user-${key}`).value]));
+  values.role = $('user-role').value || 'employee';
   errors = validateEmployee(values); notice('create-user-status');
   if (invalid()) return;
   const generation = version;
@@ -215,15 +222,17 @@ $('create-user-form').addEventListener('submit', async event => {
     $('create-user-form').reset(); notice('create-user-status');
     $('temporary-password').textContent = response.data.temporary_password;
     $('created-user-phone').textContent = response.data.user.phone;
+    listedRole = response.data.user.role; $('users-role-filter').value = listedRole;
     $('user-created').hidden = false;
     $('user-result-dialog').showModal();
     $('close-user-created').focus();
     page = 1; loadUsers();
+    globalThis.window?.dispatchEvent(new Event('staff-directory-changed'));
   } catch (error) {
     if (generation !== version) return;
     if (error.message === 'PHONE_EXISTS') errors['user-phone'] = 'phoneExists';
     notice('create-user-status', uncertain(error) ? 'createEmployeeUncertain' : errorNotice(error));
-    if (uncertain(error)) { page = 1; await loadUsers(); }
+    if (uncertain(error)) { listedRole = values.role; $('users-role-filter').value = listedRole; page = 1; await loadUsers(); }
   } finally {
     if (generation === version) { pending = false; renderAccounts(); }
   }
@@ -238,6 +247,7 @@ async function toggleUser(user) {
     if (generation !== version) return;
     if (result) result.data = result.data.map(item => item.id === user.id ? response.data.user : item);
     notice('users-action-status', 'accountSaved');
+    globalThis.window?.dispatchEvent(new Event('staff-directory-changed'));
   } catch (error) {
     if (generation !== version) return;
     notice('users-action-status', uncertain(error) ? 'accountUpdateUncertain' : errorNotice(error));
@@ -253,6 +263,11 @@ $('user-result-dialog').addEventListener('close', () => {
   clearSecret(); renderAccounts();
 });
 $('retry-users').addEventListener('click', () => { if (!loading && active === 'users') loadUsers(); });
+$('users-role-filter').addEventListener('change', () => {
+  if (active !== 'users' || loading || pending || resetting || changingUser !== null || !$('user-created').hidden) { $('users-role-filter').value = listedRole; return; }
+  if (!['employee', 'manager'].includes($('users-role-filter').value)) return;
+  listedRole = $('users-role-filter').value; page = 1; loadUsers();
+});
 $('users-previous').addEventListener('click', () => { if (!loading && changingUser === null && page > 1) { page--; loadUsers(); } });
 $('users-next').addEventListener('click', () => { if (!loading && changingUser === null && result && page * result.pagination.limit < result.pagination.total) { page++; loadUsers(); } });
 
