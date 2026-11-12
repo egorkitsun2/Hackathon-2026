@@ -46,18 +46,19 @@ test('file migration preserves data and creates a WAL-consistent backup once', (
     assert.equal(db.prepare('SELECT count(*) AS n FROM category_routing WHERE manager_id IS NULL').get()!.n, 3)
     const manager = db.prepare("INSERT INTO users(phone,full_name,department,position,password_hash,role,created_at) VALUES ('2','Manager','D','P','h','manager','now')").run()
     assert.equal(Number(manager.lastInsertRowid), 100)
-    assert.throws(() => db.exec("UPDATE tickets SET category='bad'"), /CHECK constraint/)
+    assert.throws(() => db.exec("UPDATE tickets SET category='bad'"), /FOREIGN KEY constraint/)
     assert.throws(() => db.exec('UPDATE tickets SET assigned_to=999'), /FOREIGN KEY constraint/)
     const backups = readdirSync(dir).filter(n => n.startsWith('.team-voice-backup-'))
-    assert.equal(backups.length, 1)
-    const backup = new DatabaseSync(join(dir, backups[0], 'before-0005.sqlite'), { readOnly: true })
+    assert.equal(backups.length, 2)
+    const backupDir = backups.find(n => readdirSync(join(dir, n)).includes('before-0005.sqlite'))!
+    const backup = new DatabaseSync(join(dir, backupDir, 'before-0005.sqlite'), { readOnly: true })
     try {
       assert.deepEqual(backup.prepare('SELECT * FROM users').all(), before.users)
       assert.deepEqual(backup.prepare('SELECT * FROM tickets').all(), before.tickets)
       assert.equal(backup.prepare("SELECT count(*) AS n FROM schema_migrations WHERE name LIKE '0005%'").get()!.n, 0)
     } finally { backup.close() }
     migrate(db)
-    assert.equal(readdirSync(dir).filter(n => n.startsWith('.team-voice-backup-')).length, 1)
+    assert.equal(readdirSync(dir).filter(n => n.startsWith('.team-voice-backup-')).length, 2)
   } finally { db.close(); removeTemp(dir) }
 })
 test('foreign-key violations roll back the rebuild and restore enforcement', () => {
@@ -110,6 +111,7 @@ test('concurrent migration scripts succeed against the same old file', async () 
     const results = await Promise.all([run(), run()])
     for (const result of results) assert.equal(result.code, 0, result.stderr)
     assert.equal(db.prepare("SELECT count(*) AS n FROM schema_migrations WHERE name LIKE '0005%'").get()!.n, 1)
+    assert.equal(db.prepare("SELECT count(*) AS n FROM schema_migrations WHERE name LIKE '0006%'").get()!.n, 1)
     assert.deepEqual(db.prepare('PRAGMA foreign_key_check').all(), [])
     assert.equal(db.prepare('SELECT password_hash FROM users WHERE id=1').get()!.password_hash, 'secret-hash')
   } finally { db.close(); removeTemp(dir) }

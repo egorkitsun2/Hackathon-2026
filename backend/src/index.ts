@@ -11,15 +11,17 @@ import type { AttachmentRow } from './attachments.js'
 import { accountProfile, employeeView, newPassword, temporaryPassword, userId } from './accounts.js'
 import { allowLogin, loginRetryAfter, recordFailedLogin, digest, hashPassword, newSessionToken, normalizePhone, SESSION_SECONDS, verifyPassword } from './security.js'
 import { ApiError, invalid, jsonBody, pagination, text, ticketId } from './validation.js'
-import type { AppEnv, Role, Ticket, TicketStatus, User } from './types.js'
+import type { AppEnv, Category, Role, Ticket, TicketStatus, User } from './types.js'
 
-const categories = ['it', 'procurement', 'general'] as const
 const statuses = ['new', 'in_review', 'resolved', 'rejected']
 const ticketTypes = ['problem', 'suggestion', 'complaint', 'gratitude']
 const publicUser = (user: User) => ({ id: user.id, full_name: user.full_name, phone: user.phone,
   department: user.department, position: user.position, role: user.role })
 const publicTicket = (ticket: Ticket) => ({ id: ticket.id, type: ticket.type, title: ticket.title,
   description: ticket.description, status: ticket.status, category: ticket.category, assigned_to: ticket.assigned_to, created_at: ticket.created_at, updated_at: ticket.updated_at })
+
+const categoryView = (category: Category) => ({ code: category.code, name_ru: category.name_ru,
+  name_kz: category.name_kz, is_active: Boolean(category.is_active) })
 
 export interface AppOptions { db: DatabaseSync; origin: string; production?: boolean; attachmentsDir?: string; frontendDir?: string }
 
@@ -272,18 +274,71 @@ export async function createApp({ db, origin, production = false, attachmentsDir
     if (!manager) return invalid({ [field]: 'INVALID_MANAGER' })
     return value
   }
-  app.get('/api/v1/categories', authenticated(), (c) => c.json({ data: categories }))
+  function activeCategory(value: unknown): string {
+    if (typeof value !== 'string' || value.length > 32) return invalid({ category: 'INVALID_CATEGORY' })
+    const category = db.prepare('SELECT is_active FROM categories WHERE code = ?').get(value)
+    if (!category) return invalid({ category: 'INVALID_CATEGORY' })
+    if (!category.is_active) throw new ApiError(409, 'CATEGORY_ARCHIVED', 'Category is archived')
+    return value
+  }
+  function adminCategory(code: string) {
+    const category = db.prepare(`SELECT c.code, c.name_ru, c.name_kz, c.is_active, r.manager_id FROM categories c
+      LEFT JOIN category_routing r ON r.category = c.code WHERE c.code = ?`).get(code) as unknown as (Category & { manager_id: number | null }) | undefined
+    if (!category) throw new ApiError(404, 'NOT_FOUND', 'Category not found')
+    return { ...categoryView(category), manager_id: category.manager_id }
+  }
+  app.get('/api/v1/categories', authenticated(), (c) => {
+    const details = c.req.query('details')
+    if (details !== undefined && !['true', 'false'].includes(details)) return invalid({ details: 'EXPECTED_BOOLEAN' })
+    const includeArchived = c.req.query('include_archived')
+    if (includeArchived !== undefined && !['true', 'false'].includes(includeArchived)) return invalid({ include_archived: 'EXPECTED_BOOLEAN' })
+    const categories = db.prepare(`SELECT code, name_ru, name_kz, is_active FROM categories ${includeArchived === 'true' ? '' : 'WHERE is_active = 1'} ORDER BY id`).all() as unknown as Category[]
+    return c.json({ data: details === 'true' ? categories.map(categoryView) : categories.map(category => category.code) })
+  })
+  app.get('/api/v1/admin/categories', authenticated('admin'), (c) => {
+    const categories = db.prepare(`SELECT c.code, c.name_ru, c.name_kz, c.is_active, r.manager_id FROM categories c
+      LEFT JOIN category_routing r ON r.category = c.code ORDER BY c.id`).all() as unknown as (Category & { manager_id: number | null })[]
+    return c.json({ data: categories.map(category => ({ ...categoryView(category), manager_id: category.manager_id })) })
+  })
+  app.post('/api/v1/admin/categories', authenticated('admin'), async (c) => {
+    const body = await jsonBody(c, ['code', 'name_ru', 'name_kz', 'manager_id'])
+    if (typeof body.code !== 'string' || !/^[a-z][a-z0-9_]{1,31}$/.test(body.code)) return invalid({ code: 'INVALID_CATEGORY_CODE' })
+    const code = body.code
+    const nameRu = text(body.name_ru, 'name_ru', 1, 120), nameKz = text(body.name_kz, 'name_kz', 1, 120)
+    const category = transaction(db, () => {
+      sessionUser(c.get('tokenHash'), 'admin')
+      if (db.prepare('SELECT code FROM categories WHERE code = ?').get(code)) throw new ApiError(409, 'CATEGORY_EXISTS', 'Category code already exists')
+      const managerId = activeManager(body.manager_id === undefined ? null : body.manager_id, 'manager_id')
+      db.prepare('INSERT INTO categories(code, name_ru, name_kz) VALUES (?, ?, ?)').run(code, nameRu, nameKz)
+      db.prepare('INSERT INTO category_routing(category, manager_id) VALUES (?, ?)').run(code, managerId)
+      return adminCategory(code)
+    })
+    return c.json({ data: category }, 201)
+  })
+  app.patch('/api/v1/admin/categories/:code', authenticated('admin'), async (c) => {
+    const code = c.req.param('code')
+    const body = await jsonBody(c, ['is_active'])
+    if (typeof body.is_active !== 'boolean') return invalid({ is_active: 'EXPECTED_BOOLEAN' })
+    const category = transaction(db, () => {
+      sessionUser(c.get('tokenHash'), 'admin')
+      adminCategory(code)
+      if (code === 'general' && !body.is_active) throw new ApiError(409, 'CATEGORY_REQUIRED_ACTIVE', 'General category must stay active')
+      db.prepare('UPDATE categories SET is_active = ? WHERE code = ?').run(body.is_active ? 1 : 0, code)
+      return adminCategory(code)
+    })
+    return c.json({ data: category })
+  })
   app.get('/api/v1/admin/routing', authenticated('admin'), (c) => {
     return c.json({ data: db.prepare('SELECT category, manager_id FROM category_routing ORDER BY category').all() })
   })
   app.patch('/api/v1/admin/routing/:category', authenticated('admin'), async (c) => {
     const category = c.req.param('category')
-    if (!categories.includes(category as typeof categories[number])) return invalid({ category: 'INVALID_CATEGORY' })
     const body = await jsonBody(c, ['manager_id'])
     const rule = transaction(db, () => {
       sessionUser(c.get('tokenHash'), 'admin')
+      activeCategory(category)
       const managerId = activeManager(body.manager_id, 'manager_id')
-      db.prepare('UPDATE category_routing SET manager_id = ? WHERE category = ?').run(managerId, category)
+      db.prepare('INSERT INTO category_routing(category, manager_id) VALUES (?, ?) ON CONFLICT(category) DO UPDATE SET manager_id = excluded.manager_id').run(category, managerId)
       return { category, manager_id: managerId }
     })
     return c.json({ data: rule })
@@ -354,15 +409,15 @@ export async function createApp({ db, origin, production = false, attachmentsDir
     const title = text(body.title, 'title', 5, 120)
     const description = text(body.description, 'description', 10, 4000)
     const category = body.category === undefined ? 'general' : body.category
-    if (!categories.includes(category as typeof categories[number])) return invalid({ category: 'INVALID_CATEGORY' })
     const authorId = c.get('user').id
     const now = new Date().toISOString()
     const ticket = transaction(db, () => {
       sessionUser(c.get('tokenHash'), 'employee')
+      const categoryCode = activeCategory(category)
       const manager = db.prepare(`SELECT u.id FROM category_routing r JOIN users u ON u.id = r.manager_id
-        WHERE r.category = ? AND u.role = 'manager' AND u.is_active = 1`).get(category as string)
+        WHERE r.category = ? AND u.role = 'manager' AND u.is_active = 1`).get(categoryCode)
       const result = db.prepare(`INSERT INTO tickets (author_id, type, title, description, status, category, assigned_to, created_at, updated_at)
-        VALUES (?, ?, ?, ?, 'new', ?, ?, ?, ?)`).run(authorId, body.type as string, title, description, category as string, manager?.id ?? null, now, now)
+        VALUES (?, ?, ?, ?, 'new', ?, ?, ?, ?)`).run(authorId, body.type as string, title, description, categoryCode, manager?.id ?? null, now, now)
       const id = Number(result.lastInsertRowid)
       db.prepare(`INSERT INTO ticket_events (ticket_id, actor_id, old_status, new_status, comment, created_at)
         VALUES (?, ?, NULL, 'new', NULL, ?)`).run(id, authorId, now)
