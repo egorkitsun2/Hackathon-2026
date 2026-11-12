@@ -237,7 +237,9 @@ omitted. History events are ordered by id ascending.
 ## Admin list and status mutation
 
 GET /admin/tickets?page=1&limit=20&status=new supports optional
-status filter. Response uses the same pagination structure as
+status filter. Administrative items also contain needs_reassignment; the optional
+needs_reassignment=true filter is specified in the reassignment section below.
+Response uses the same pagination structure as
 GET /tickets; admin list items additionally contain:
 
 ~~~json
@@ -877,6 +879,35 @@ supports the existing status/page/limit filters. false or omitted includes all
 tickets; any other unassigned value is 400. Blocking a manager revokes all their
 sessions but preserves rules and existing ticket assignments. Activation does
 not revive old sessions; newly logged-in managers can access retained assignments.
+
+### Queue items requiring reassignment (admin only)
+
+Every item in GET /admin/tickets includes `needs_reassignment` as a JSON boolean.
+It is true only when status is new or in_review **and** either assigned_to is
+null or the assigned manager has is_active=0. Resolved/rejected tickets always
+return false, including unassigned tickets and tickets assigned to a blocked
+manager. Employee and manager list response shapes are unchanged.
+
+GET /admin/tickets?needs_reassignment=true returns only items with that flag:
+
+```json
+{"data":[{"id":124,"type":"problem","title":"Broken scanner","status":"in_review","category":"it","assigned_to":7,"needs_reassignment":true,"created_at":"2026-11-12T09:00:00.000Z","updated_at":"2026-11-12T09:00:00.000Z","author":{"id":1,"full_name":"Employee One","department":"Warehouse","position":"Worker"}}],"pagination":{"page":1,"limit":20,"total":1}}
+```
+
+False or omitted means no reassignment filter; other values (including empty,
+1 and TRUE) return 400 VALIDATION_ERROR with details.needs_reassignment=
+EXPECTED_BOOLEAN. This filter combines with status, unassigned, page and limit;
+filters intersect (AND), and pagination.total counts the filtered set.
+
+`unassigned=true` remains strictly assigned_to=NULL and includes all statuses.
+It does not include an assigned ticket just because its manager is blocked.
+The flag is computed from current account state, not stored in the database.
+Blocking and reactivation do not change assignments, timestamps or history.
+Reactivation removes the flag from open tickets still assigned to that manager;
+null assignments continue to require reassignment. Manual assignment to an
+active manager through the existing assignment endpoint clears the flag.
+New tickets routed to a blocked category manager still get assigned_to=null.
+No automatic reassignment, new schema or permission changes are introduced.
 
 ### Migration and backup
 

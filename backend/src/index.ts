@@ -303,24 +303,27 @@ export async function createApp({ db, origin, production = false, attachmentsDir
     return c.json({ data: result })
   })
 
-  function listTickets(user: User, page: number, limit: number, offset: number, status?: string, unassigned = false) {
+  function listTickets(user: User, page: number, limit: number, offset: number, status?: string, unassigned = false, needsReassignmentOnly = false) {
+    const reassignmentCondition = `(t.status IN ('new', 'in_review') AND (t.assigned_to IS NULL OR EXISTS (
+      SELECT 1 FROM users assignee WHERE assignee.id = t.assigned_to AND assignee.is_active = 0)))`
     const conditions: string[] = []
     const args: (string | number)[] = []
     if (user.role === 'employee') { conditions.push('t.author_id = ?'); args.push(user.id) }
     if (user.role === 'manager') { conditions.push('t.assigned_to = ?'); args.push(user.id) }
     if (status) { conditions.push('t.status = ?'); args.push(status) }
     if (unassigned) conditions.push('t.assigned_to IS NULL')
+    if (needsReassignmentOnly) conditions.push(reassignmentCondition)
     const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : ''
     // Only fixed SQL fragments are combined; all client values remain bound parameters.
     return transaction(db, () => {
       const total = Number(db.prepare(`SELECT count(*) AS total FROM tickets t ${where}`).get(...args)!.total)
       const rows = db.prepare(`SELECT t.id, t.type, t.title, t.status, t.category, t.assigned_to, t.created_at, t.updated_at,
-        u.id AS author_id, u.full_name, u.department, u.position FROM tickets t
+        ${reassignmentCondition} AS needs_reassignment, u.id AS author_id, u.full_name, u.department, u.position FROM tickets t
         JOIN users u ON u.id = t.author_id ${where}
         ORDER BY t.created_at DESC, t.id DESC LIMIT ? OFFSET ?`).all(...args, limit, offset)
       const data = rows.map((row) => ({ id: row.id, type: row.type, title: row.title, status: row.status,
         category: row.category, assigned_to: row.assigned_to, created_at: row.created_at, updated_at: row.updated_at,
-        ...(user.role === 'admin' ? { author: { id: row.author_id, full_name: row.full_name,
+        ...(user.role === 'admin' ? { needs_reassignment: Boolean(row.needs_reassignment), author: { id: row.author_id, full_name: row.full_name,
           department: row.department, position: row.position } } : {}) }))
       return { data, pagination: { page, limit, total } }
     })
@@ -335,7 +338,9 @@ export async function createApp({ db, origin, production = false, attachmentsDir
     if (status !== undefined && !statuses.includes(status)) return invalid({ status: 'INVALID_STATUS' })
     const unassigned = c.req.query('unassigned')
     if (unassigned !== undefined && !['true', 'false'].includes(unassigned)) return invalid({ unassigned: 'EXPECTED_BOOLEAN' })
-    return c.json(listTickets(c.get('user'), page, limit, offset, status, unassigned === 'true'))
+    const needsReassignment = c.req.query('needs_reassignment')
+    if (needsReassignment !== undefined && !['true', 'false'].includes(needsReassignment)) return invalid({ needs_reassignment: 'EXPECTED_BOOLEAN' })
+    return c.json(listTickets(c.get('user'), page, limit, offset, status, unassigned === 'true', needsReassignment === 'true'))
   })
   app.get('/api/v1/manager/tickets', authenticated('manager'), (c) => {
     const { page, limit, offset } = pagination(c)
