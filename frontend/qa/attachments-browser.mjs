@@ -56,6 +56,7 @@ try {
   await login('+77000000001');
   await page.locator('a[href="#/new-ticket"]').click();
   await page.locator('#ticket-type').selectOption('problem');
+  await page.locator('#ticket-category').selectOption('general');
   await page.locator('#ticket-title').fill('QA attachment browser');
   await page.locator('#ticket-description').fill('Isolated Firefox attachment scenario.');
   const pdf = Buffer.from('%PDF-1.4\n1 0 obj\n<< /Type /Catalog >>\nendobj\n%%EOF\n');

@@ -26,6 +26,7 @@ function harness({ restoredUser = null, loginError = null, hash = '#/employee', 
   const opened = [];
   const detailsOpened = [];
   const adminsOpened = [];
+  const managersOpened = [];
   const location = { hash };
   const context = vm.createContext({
     document, location,
@@ -41,11 +42,11 @@ function harness({ restoredUser = null, loginError = null, hash = '#/employee', 
     openNewTicket() {}, closeNewTicket() {}, resetNewTicket() {}, renderNewTicket() {},
     openTicketDetails: id => detailsOpened.push(id), closeTicketDetails() {}, renderTicketDetails() {},
     openAdminQueue: user => adminsOpened.push(user), closeAdminQueue() {}, renderAdminQueue() {},
-    openAccounts() {}, closeAccounts() {}, renderAccounts() {},
+    openAccounts() {}, closeAccounts() {}, renderAccounts() {}, openRouting() {}, closeRouting() {}, renderRouting() {}, openManagerQueue: profile => managersOpened.push(profile), openManagerTicketDetails: id => detailsOpened.push(id),
     initTheme() {}, renderThemeToggle() {}, setLanguage() {}, t: key => key,
   });
   vm.runInContext(source, context);
-  return { get: selector => document.querySelector(selector), location, opened, detailsOpened, adminsOpened, handlers, clock };
+  return { get: selector => document.querySelector(selector), location, opened, detailsOpened, adminsOpened, managersOpened, handlers, clock };
 }
 
 test('anonymous users must log in; successful login opens real employee and clears password', async () => {
@@ -220,4 +221,17 @@ test('anonymous and failed session checks reveal a usable login only after compl
     assert.equal(h.location.hash, '#/login');
     assert.equal(h.get('#login-status').textContent, code === 'UNAUTHORIZED' ? '' : 'networkError');
   }
+});
+
+
+test('manager restores own queue and details, rejects admin/create routes and handles lost assignment', async () => {
+  const h=harness({restoredUser:{id:7,role:'manager'},hash:'#/admin/users'});await flush();
+  assert.equal(h.location.hash,'#/manager');assert.equal(h.get('#admin-screen').hidden,false);
+  assert.equal(h.get('#users-screen').hidden,true);assert.equal(h.adminsOpened.length,0);assert.equal(h.managersOpened.length,1);
+  h.location.hash='#/new-ticket';h.handlers.hashchange();assert.equal(h.location.hash,'#/manager');
+  h.location.hash='#/manager/tickets/124';h.handlers.hashchange();assert.deepEqual(h.detailsOpened,['124']);
+  h.handlers['ticket-access-lost']();assert.equal(h.location.hash,'#/manager');assert.equal(h.get('#ticket-detail-screen').hidden,true);
+  assert.equal(h.get('#session-status').textContent,'ticketAccessLost');
+  const temporary=harness({restoredUser:{id:7,role:'manager'},hash:'#/manager/tickets/124',required:true});await flush();
+  assert.equal(temporary.location.hash,'#/change-password');assert.equal(temporary.managersOpened.length,0);assert.equal(temporary.detailsOpened.length,0);
 });

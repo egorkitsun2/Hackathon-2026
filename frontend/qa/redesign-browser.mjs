@@ -90,6 +90,7 @@ try {
       assert.equal(await page.locator('#workspace-nav a[aria-current="page"]:visible').count(),1);
       await page.locator('a[href="#/new-ticket"]').click();
       await page.locator('#ticket-type').selectOption('problem');
+  await page.locator('#ticket-category').selectOption('general');
       await page.locator('#ticket-title').fill('Workplace issue');
       await page.locator('#ticket-description').fill('Please check the lighting in the warehouse work area.');
       if (!(await page.locator('#ticket-writing-help').evaluate(el=>el.open))) await page.locator('#ticket-writing-help summary').click();

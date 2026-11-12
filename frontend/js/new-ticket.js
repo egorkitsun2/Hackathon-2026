@@ -1,6 +1,6 @@
-import { createTicket, uploadAttachment, getTicket } from './api.js?v=saved-previews-20261112-1';
-import { validateAttachment } from './attachment-validation.js?v=saved-previews-20261112-1';
-import { t } from './i18n.js?v=saved-previews-20261112-1';
+import { createTicket, uploadAttachment, getTicket } from './api.js?v=routing-v05-20261112-1';
+import { validateAttachment } from './attachment-validation.js?v=routing-v05-20261112-1';
+import { t } from './i18n.js?v=routing-v05-20261112-1';
 
 const form = document.querySelector('#new-ticket-form');
 const fields = document.querySelector('#ticket-fields');
@@ -8,7 +8,7 @@ const submit = document.querySelector('#send-ticket');
 const status = document.querySelector('#create-ticket-status');
 const listLink = document.querySelector('#created-ticket-list');
 const detailsLink = document.querySelector('#created-ticket-details');
-const inputs = Object.fromEntries(['type', 'title', 'description'].map(name => [name, document.querySelector(`#ticket-${name}`)]));
+const inputs = Object.fromEntries(['type', 'category', 'title', 'description'].map(name => [name, document.querySelector(`#ticket-${name}`)]));
 let errors = {};
 let pending = false;
 let created = null;
@@ -115,6 +115,7 @@ export const ticketTextLength = value => Array.from(value.trim()).length;
 export function validateTicket(values) {
   const errors = {};
   if (!['problem', 'suggestion', 'complaint', 'gratitude'].includes(values.type)) errors.type = 'typeRequired';
+  if (!['it', 'procurement', 'general'].includes(values.category)) errors.category = 'directionRequired';
   for (const [name, min, max] of [['title', 5, 120], ['description', 10, 4000]]) {
     const length = ticketTextLength(values[name]);
     if (length < min || length > max) errors[name] = name === 'title' ? 'titleLengthError' : 'descriptionLengthError';
@@ -261,7 +262,7 @@ form.addEventListener('submit', async event => {
       } catch { /* The detail link offers a manual refresh; never replay the POST. */ }
     } else if (error.message === 'VALIDATION_ERROR') {
       for (const name of Object.keys(inputs)) {
-        if (error.details?.[name]) errors[name] = ({ type: 'typeRequired', title: 'titleLengthError', description: 'descriptionLengthError' })[name];
+        if (error.details?.[name]) errors[name] = ({ type: 'typeRequired', category: 'directionRequired', title: 'titleLengthError', description: 'descriptionLengthError' })[name];
       }
       statusKey = 'ticketValidationError';
     } else {

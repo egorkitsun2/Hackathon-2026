@@ -51,10 +51,16 @@ export async function request(path, options = {}) {
 export const changePassword = ({ current_password, new_password }) => request('/auth/change-password', {
   method: 'POST', body: JSON.stringify({ current_password, new_password }),
 });
-export const getUsers = (page = 1) => request(`/admin/users?page=${page}&limit=20`);
-export const createUser = ({ phone, full_name, department, position }) => request('/admin/users', {
-  method: 'POST', body: JSON.stringify({ phone: normalizePhone(phone), full_name: full_name.trim(), department: department.trim(), position: position.trim() }),
-});
+export const getUsers = (page = 1, role = 'employee') => {
+  if (!['employee', 'manager'].includes(role) || !Number.isSafeInteger(page) || page < 1) throw new Error('VALIDATION_ERROR');
+  return request(`/admin/users?page=${page}&limit=20${role === 'manager' ? '&role=manager' : ''}`);
+};
+export const createUser = ({ phone, full_name, department, position, role = 'employee' }) => {
+  if (!['employee', 'manager'].includes(role)) throw new Error('VALIDATION_ERROR');
+  return request('/admin/users', {
+    method: 'POST', body: JSON.stringify({ phone: normalizePhone(phone), full_name: full_name.trim(), department: department.trim(), position: position.trim(), ...(role === 'manager' ? { role } : {}) }),
+  });
+};
 export const updateUser = (id, is_active) => request(`/admin/users/${id}`, {
   method: 'PATCH', body: JSON.stringify({ is_active }),
 });
@@ -93,10 +99,13 @@ export async function getMyTickets({ page = 1, limit = 20 } = {}) {
   return request(`/tickets?page=${page}&limit=${limit}`);
 }
 
-export function createTicket({ type, title, description }) {
+export function createTicket({ type, title, description, category }) {
+  if (!['it', 'procurement', 'general'].includes(category)) {
+    const error = new Error('VALIDATION_ERROR'); error.details = { category: 'INVALID_CATEGORY' }; throw error;
+  }
   return request('/tickets', {
     method: 'POST',
-    body: JSON.stringify({ type, title: title.trim(), description: description.trim() }),
+    body: JSON.stringify({ type, title: title.trim(), description: description.trim(), category }),
   });
 }
 
@@ -107,17 +116,17 @@ export async function getTicket(id) {
   return request(`/tickets/${id}`);
 }
 
-export async function getAdminTickets({ status = '', page = 1, limit = 20 } = {}) {
+export async function getAdminTickets({ status = '', page = 1, limit = 20, unassigned = false } = {}) {
   if (!['', 'new', 'in_review', 'resolved', 'rejected'].includes(status)
-    || !Number.isInteger(page) || page < 1 || !Number.isInteger(limit) || limit < 1 || limit > 50) {
+    || !Number.isInteger(page) || page < 1 || !Number.isInteger(limit) || limit < 1 || limit > 50 || typeof unassigned !== 'boolean') {
     throw new Error('VALIDATION_ERROR');
   }
-  return request(`/admin/tickets?page=${page}&limit=${limit}${status ? `&status=${status}` : ''}`);
+  return request(`/admin/tickets?page=${page}&limit=${limit}${status ? `&status=${status}` : ''}${unassigned ? '&unassigned=true' : ''}`);
 }
 
-export async function updateTicketStatus(id, { status, comment }) {
+export async function updateTicketStatus(id, { status, comment }, role = 'admin') {
   if (!/^[1-9]\d*$/.test(String(id)) || !Number.isSafeInteger(Number(id))) throw new Error('NOT_FOUND');
-  if (!['in_review', 'resolved', 'rejected'].includes(status)) throw new Error('VALIDATION_ERROR');
+  if (!['admin', 'manager'].includes(role) || !['in_review', 'resolved', 'rejected'].includes(status)) throw new Error('VALIDATION_ERROR');
   const body = { status };
   if (status !== 'in_review') {
     if (typeof comment !== 'string' || Array.from(comment.trim()).length < 5 || Array.from(comment.trim()).length > 2000) {
@@ -127,7 +136,31 @@ export async function updateTicketStatus(id, { status, comment }) {
     }
     body.comment = comment.trim();
   }
-  return request(`/admin/tickets/${id}`, { method: 'PATCH', body: JSON.stringify(body) });
+  return request(`/${role}/tickets/${id}`, { method: 'PATCH', body: JSON.stringify(body) });
+}
+
+export function getManagerTickets({ status = '', page = 1, limit = 20 } = {}) {
+  if (!['', 'new', 'in_review', 'resolved', 'rejected'].includes(status) || !Number.isSafeInteger(page) || page < 1 || !Number.isSafeInteger(limit) || limit < 1 || limit > 50) throw new Error('VALIDATION_ERROR');
+  return request(`/manager/tickets?page=${page}&limit=${limit}${status ? `&status=${status}` : ''}`);
+}
+
+export const getRouting = () => request('/admin/routing');
+const validManagerId = id => id === null || (Number.isSafeInteger(id) && id > 0);
+export function updateRouting(category, manager_id) {
+  if (!['it', 'procurement', 'general'].includes(category) || !validManagerId(manager_id)) throw new Error('VALIDATION_ERROR');
+  return request(`/admin/routing/${category}`, { method: 'PATCH', body: JSON.stringify({ manager_id }) });
+}
+export function assignTicket(id, assigned_to) {
+  if (!Number.isSafeInteger(Number(id)) || !/^[1-9]\d*$/.test(String(id)) || !validManagerId(assigned_to)) throw new Error('VALIDATION_ERROR');
+  return request(`/admin/tickets/${id}/assignment`, { method: 'PATCH', body: JSON.stringify({ assigned_to }) });
+}
+export async function getManagers() {
+  const managers = [];
+  for (let page = 1; ; page++) {
+    const result = await getUsers(page, 'manager');
+    managers.push(...result.data);
+    if (page * result.pagination.limit >= result.pagination.total) return managers;
+  }
 }
 
 export const getAdminStats = () => request('/admin/stats');

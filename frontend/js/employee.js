@@ -1,5 +1,6 @@
-import { getMyTickets } from './api.js?v=saved-previews-20261112-1';
-import { t } from './i18n.js?v=saved-previews-20261112-1';
+import { getMyTickets } from './api.js?v=routing-v05-20261112-1';
+import { categoryLabel } from './routing.js?v=routing-v05-20261112-1';
+import { t } from './i18n.js?v=routing-v05-20261112-1';
 
 const screen = document.querySelector('#employee-screen');
 const list = document.querySelector('#ticket-list');
@@ -36,7 +37,7 @@ export function renderEmployee() {
   for (const ticket of result.data) {
     const item = document.createElement('li');
     item.className = 'ticket ticket-card';
-    const meta = textElement('p', `${t(ticket.type)} · № ${ticket.id}`, 'hint');
+    const meta = textElement('p', `${t(ticket.type)}${ticket.category ? ` · ${categoryLabel(ticket.category)}` : ''} · № ${ticket.id}`, 'hint');
     const title = textElement('h3', ticket.title);
     const time = textElement('time', new Intl.DateTimeFormat(document.documentElement.lang === 'kk' ? 'kk-KZ' : 'ru-KZ', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(ticket.created_at)), 'hint');
     time.dateTime = ticket.created_at;

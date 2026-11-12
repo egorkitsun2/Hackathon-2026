@@ -4,6 +4,7 @@ import test from 'node:test';
 import vm from 'node:vm';
 
 const validationSource = (await readFile(new URL('../js/attachment-validation.js', import.meta.url), 'utf8')).replaceAll('export ', '');
+const routingHelpers = (await readFile(new URL('../js/routing.js', import.meta.url), 'utf8')).split('let active =')[0].replace(/^import .*;\r?\n/gm, '').replaceAll('export ', '');
 const source = validationSource + '\n' + (await readFile(new URL('../js/ticket.js', import.meta.url), 'utf8')).replace(/^import .*;\r?\n/gm, '').replaceAll('export ', '');
 const flush = () => new Promise(resolve => setImmediate(resolve));
 const ticket = {
@@ -28,8 +29,8 @@ function harness(getTicket = async () => ({ data: ticket }), updateTicketStatus 
   });
   const get = selector => { if (!elements.has(selector)) elements.set(selector, element()); return elements.get(selector); };
   const document = { querySelector: get, createElement: element, documentElement: { lang: 'ru' } };
-  const context = vm.createContext({ document, getTicket, updateTicketStatus, getAttachmentPreview: async () => ({}), URL: { createObjectURL() { const url = `blob:test-${urls.created.length}`; urls.created.push(url); return url; }, revokeObjectURL(url) { urls.revoked.push(url); } }, TextEncoder, AbortController, uploadAttachment: async () => ({}), Intl, t: key => `${document.documentElement.lang}:${key}` });
-  vm.runInContext(source, context);
+  const context = vm.createContext({ document, getTicket, updateTicketStatus, getManagers: async () => [], assignTicket: async () => ({}), getAttachmentPreview: async () => ({}), URL: { createObjectURL() { const url = `blob:test-${urls.created.length}`; urls.created.push(url); return url; }, revokeObjectURL(url) { urls.revoked.push(url); } }, TextEncoder, AbortController, uploadAttachment: async () => ({}), Intl, t: key => `${document.documentElement.lang}:${key}` });
+  vm.runInContext(routingHelpers + source, context);
   return { context, get, document, urls };
 }
 
@@ -325,4 +326,78 @@ test('preview failure retains download; explicit retry works and decode failure 
   assert.deepEqual(h.urls.revoked,['blob:test-0']);
   assert.match(container.children[0].textContent,/attachmentPreviewUnavailable/);
   h.context.closeTicketDetails();assert.equal(h.urls.revoked.length,1);
+});
+
+
+test('manager details share attachments, history and review controls without administrator status API', async () => {
+  let adminWrites=0, managerWrites=0;
+  let current={...ticket,status:'new',author:{full_name:'QA author',department:'QA',position:'Test'}};
+  const h=harness(async()=>({data:ticket}),async()=>{adminWrites++;});
+  h.context.openManagerTicketDetails('124',{
+    readTicket:async()=>({data:current}),
+    updateStatus:async(id,body)=>{managerWrites++;assert.equal(id,124);assert.equal(body.status,'in_review');current={...current,status:'in_review'};}
+  });
+  await flush();
+  assert.equal(h.get('#detail-back').href,'#/manager');
+  assert.equal(h.get('#detail-author-block').hidden,true);
+  await h.get('#take-ticket').events.click();
+  assert.equal(managerWrites,1);
+  assert.equal(adminWrites,0);
+  assert.equal(h.get('#detail-status').textContent,'ru:in_review');
+  assert.equal(h.get('#ticket-decision-form').hidden,false);
+});
+
+test('manager details use the shared protected detail endpoint by default', async () => {
+  let reads=0;
+  const h=harness(async()=>{reads++;return {data:ticket};});
+  h.context.openManagerTicketDetails('124');await flush();
+  assert.equal(reads,1);
+  assert.equal(h.get('#ticket-detail-content').hidden,false);
+});
+
+
+test('assignment validates directory, blocks duplicates, confirms response and refreshes uncertain results once', async () => {
+  let current={...ticket,category:'it',assigned_to:null},writes=0,finish;
+  const h=harness(async()=>({data:current}));
+  h.context.getManagers=async()=>[{id:7,role:'manager',full_name:'QA manager',is_active:true}];
+  h.context.assignTicket=async(id,assigned)=>{writes++;await new Promise(resolve=>{finish=resolve;});current={...current,assigned_to:assigned};};
+  h.context.openTicketDetails('124',true);await flush();
+  const choose=value=>h.get('#ticket-assignee').events.change({target:{value}});
+  const send=()=>h.get('#ticket-assignment-form').events.submit({preventDefault(){}});
+  choose('999');await send();assert.equal(writes,0);assert.equal(h.get('#ticket-assignee-error').hidden,false);
+  choose('7');const pending=send();await send();assert.equal(writes,1);
+  assert.notEqual(h.get('#ticket-assignment-status').textContent,'ru:assignmentSaved');
+  finish();await pending;assert.equal(h.get('#ticket-assignment-status').textContent,'ru:assignmentSaved');
+  h.context.assignTicket=async()=>{writes++;current={...current,assigned_to:null};throw new Error('NETWORK_ERROR');};
+  choose('');await send();assert.equal(writes,2);assert.equal(h.get('#ticket-assignment-status').textContent,'ru:assignmentUncertain');
+});
+
+test('manager loses private metadata and preview URLs after a reassignment 404', async () => {
+  let missing=false;const events=[];
+  const h=harness(async()=>{if(missing)throw new Error('NOT_FOUND');return {data:{...ticket,category:'it',assigned_to:7,attachments:[{id:1,original_name:'private.png',mime_type:'image/png',size_bytes:10}]}};});
+  h.context.Event=Event;h.context.window={dispatchEvent:event=>events.push(event.type)};
+  h.context.openManagerTicketDetails('124');await flush();
+  assert.equal(h.urls.created.length,1);missing=true;
+  h.context.openManagerTicketDetails('124');await flush();
+  assert.deepEqual(events,['ticket-access-lost']);assert.equal(h.get('#attachments-list').children.length,0);
+  assert.equal(h.get('#detail-title').textContent,'');assert.equal(h.get('#ticket-detail-content').hidden,true);assert.equal(h.urls.revoked.length,1);
+});
+
+
+test('manager directory has an error/retry state and is not discarded by status refresh', async () => {
+  let finish,current={...ticket,status:'new',category:'it',assigned_to:7};
+  const h=harness(async()=>({data:current}),async()=>{current={...current,status:'in_review'};});
+  h.context.getManagers=()=>new Promise(resolve=>{finish=resolve;});
+  h.context.openTicketDetails('124',true);await flush();
+  assert.equal(h.get('#ticket-assignment-fields').disabled,true);
+  await h.get('#take-ticket').events.click();
+  finish([{id:7,role:'manager',full_name:'IT manager',is_active:true}]);await flush();
+  assert.equal(h.get('#ticket-assignment-fields').disabled,false);
+  assert.equal(h.get('#ticket-assignee').children.some(option=>option.value==='7' && !option.disabled),true);
+  h.context.getManagers=async()=>{throw new Error('NETWORK_ERROR');};
+  await h.get('#retry-ticket-managers').events.click();await flush();
+  assert.equal(h.get('#retry-ticket-managers').hidden,false);assert.equal(h.get('#ticket-assignment-fields').disabled,true);
+  h.context.getManagers=async()=>[{id:7,role:'manager',full_name:'IT manager',is_active:true}];
+  await h.get('#retry-ticket-managers').events.click();await flush();
+  assert.equal(h.get('#retry-ticket-managers').hidden,true);assert.equal(h.get('#ticket-assignment-fields').disabled,false);
 });
