@@ -42,7 +42,7 @@ function harness({ restoredUser = null, loginError = null, hash = '#/employee', 
     openNewTicket() {}, closeNewTicket() {}, resetNewTicket() {}, renderNewTicket() {},
     openTicketDetails: id => detailsOpened.push(id), closeTicketDetails() {}, renderTicketDetails() {},
     openAdminQueue: user => adminsOpened.push(user), closeAdminQueue() {}, renderAdminQueue() {},
-    openAccounts() {}, closeAccounts() {}, renderAccounts() {}, openRouting() {}, closeRouting() {}, renderRouting() {}, openManagerQueue: profile => managersOpened.push(profile), openManagerTicketDetails: id => detailsOpened.push(id),
+    openAccounts() {}, closeAccounts() {}, renderAccounts() {}, loadCategoryNames: async () => [], clearCategoryNames() {}, openRouting() {}, closeRouting() {}, renderRouting() {}, openManagerQueue: profile => managersOpened.push(profile), openManagerTicketDetails: id => detailsOpened.push(id),
     initTheme() {}, renderThemeToggle() {}, setLanguage() {}, t: key => key,
   });
   vm.runInContext(source, context);

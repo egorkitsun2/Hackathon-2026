@@ -258,7 +258,7 @@ test('v0.5 uses exact manager, rule and assignment endpoints with no arbitrary e
     assert.throws(()=>api.createUser({role:'admin'}),/VALIDATION_ERROR/);
     assert.throws(()=>api.createTicket({type:'problem',title:'Title',description:'Description'}),/VALIDATION_ERROR/);
     for(const id of ['7',0,-1,undefined,{}]) assert.throws(()=>api.updateRouting('it',id),/VALIDATION_ERROR/);
-    assert.throws(()=>api.updateRouting('unknown',7),/VALIDATION_ERROR/);
+    assert.throws(()=>api.updateRouting('../unknown',7),/VALIDATION_ERROR/);
     assert.equal(calls.length,count);
   } finally {globalThis.fetch=previous;}
 });
@@ -267,6 +267,29 @@ test('manager directory fetches every page instead of silently truncating choice
   const previous=globalThis.fetch,urls=[];
   globalThis.fetch=async url=>{urls.push(url);return Response.json({data:urls.length===1?Array.from({length:20},(_,id)=>({id:id+1,role:'manager'})):[{id:21,role:'manager'}],pagination:{page:urls.length,limit:20,total:21}});};
   try {const result=await api.getManagers();assert.equal(result.length,21);assert.equal(urls.length,2);assert.match(urls[1],/page=2.*role=manager/);}finally{globalThis.fetch=previous;}
+});
+
+test('dynamic categories use agreed endpoints, trimmed Unicode names and immutable validated codes', async () => {
+  const previous = globalThis.fetch, calls = [];
+  globalThis.fetch = async (url, options) => { calls.push({ url, method: options.method ?? 'GET', body: options.body && JSON.parse(options.body) }); return Response.json({ data: [] }); };
+  try {
+    await api.getCategories(); await api.getAdminCategories();
+    await api.createCategory({ code: 'electrician', name_ru: ' Электрик ', name_kz: ' Электрик ', manager_id: 7, is_active: true });
+    await api.setCategoryActive('electrician', false); await api.setCategoryActive('electrician', true);
+    await api.updateRouting('electrician', null);
+    await api.createTicket({ type: 'problem', title: 'Title', description: 'Description', category: 'electrician', assigned_to: 7 });
+    assert.deepEqual(calls.slice(0, 2).map(item => item.url), ['/api/v1/categories?details=true', '/api/v1/admin/categories']);
+    assert.deepEqual(calls[2].body, { code: 'electrician', name_ru: 'Электрик', name_kz: 'Электрик', manager_id: 7 });
+    assert.deepEqual(calls[3], { url: '/api/v1/admin/categories/electrician', method: 'PATCH', body: { is_active: false } });
+    assert.deepEqual(calls[4].body, { is_active: true });
+    assert.equal(calls[5].url, '/api/v1/admin/routing/electrician');
+    assert.equal('assigned_to' in calls[6].body, false);
+    for (const code of ['', 'a', 'Upper', '../it', 'a'.repeat(33), 'электрик']) assert.throws(() => api.setCategoryActive(code, false), /VALIDATION_ERROR/);
+    assert.throws(() => api.createCategory({ code: 'hr', name_ru: ' ', name_kz: 'x' }), /VALIDATION_ERROR/);
+    assert.throws(() => api.createCategory({ code: 'hr', name_ru: 'x'.repeat(121), name_kz: 'x' }), /VALIDATION_ERROR/);
+    await api.createCategory({ code: 'hr', name_ru: '😀'.repeat(120), name_kz: 'x' });
+    assert.equal(calls.at(-1).body.manager_id, null);
+  } finally { globalThis.fetch = previous; }
 });
 
 

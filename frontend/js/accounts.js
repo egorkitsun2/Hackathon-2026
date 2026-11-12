@@ -1,5 +1,5 @@
-import { changePassword, getUsers, createUser, updateUser, resetUserPassword, normalizePhone, hasManagerAssignments } from './api.js?v=reassignment-filter-20261112-1';
-import { t } from './i18n.js?v=reassignment-filter-20261112-1';
+import { changePassword, getUsers, createUser, updateUser, resetUserPassword, normalizePhone, hasManagerAssignments } from './api.js?v=dynamic-categories-20261113-1';
+import { t } from './i18n.js?v=dynamic-categories-20261113-1';
 
 const $ = id => document.querySelector(`#${id}`);
 let version = 0;

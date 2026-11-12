@@ -100,7 +100,7 @@ export async function getMyTickets({ page = 1, limit = 20 } = {}) {
 }
 
 export function createTicket({ type, title, description, category }) {
-  if (!['it', 'procurement', 'general'].includes(category)) {
+  if (!validCategoryCode(category)) {
     const error = new Error('VALIDATION_ERROR'); error.details = { category: 'INVALID_CATEGORY' }; throw error;
   }
   return request('/tickets', {
@@ -156,8 +156,27 @@ export async function hasManagerAssignments(id) {
   }
 }
 const validManagerId = id => id === null || (Number.isSafeInteger(id) && id > 0);
+export const validCategoryCode = code => typeof code === 'string' && /^[a-z][a-z0-9_]{1,31}$/.test(code);
+async function categoryDirectory(path, admin = false) {
+  const result = await request(path);
+  if (!Array.isArray(result.data) || result.data.some(item => !item || !validCategoryCode(item.code)
+    || typeof item.name_ru !== 'string' || typeof item.name_kz !== 'string' || typeof item.is_active !== 'boolean'
+    || (admin && !validManagerId(item.manager_id)))) throw new Error('API_UNAVAILABLE');
+  return result;
+}
+export const getCategories = () => categoryDirectory('/categories?details=true');
+export const getAdminCategories = () => categoryDirectory('/admin/categories', true);
+export function createCategory({ code, name_ru, name_kz, manager_id = null }) {
+  if (!validCategoryCode(code) || !validManagerId(manager_id)
+    || [name_ru, name_kz].some(name => typeof name !== 'string' || !name.trim() || Array.from(name.trim()).length > 120)) throw new Error('VALIDATION_ERROR');
+  return request('/admin/categories', { method: 'POST', body: JSON.stringify({ code, name_ru: name_ru.trim(), name_kz: name_kz.trim(), manager_id }) });
+}
+export function setCategoryActive(code, is_active) {
+  if (!validCategoryCode(code) || typeof is_active !== 'boolean') throw new Error('VALIDATION_ERROR');
+  return request(`/admin/categories/${encodeURIComponent(code)}`, { method: 'PATCH', body: JSON.stringify({ is_active }) });
+}
 export function updateRouting(category, manager_id) {
-  if (!['it', 'procurement', 'general'].includes(category) || !validManagerId(manager_id)) throw new Error('VALIDATION_ERROR');
+  if (!validCategoryCode(category) || !validManagerId(manager_id)) throw new Error('VALIDATION_ERROR');
   return request(`/admin/routing/${category}`, { method: 'PATCH', body: JSON.stringify({ manager_id }) });
 }
 export function assignTicket(id, assigned_to) {

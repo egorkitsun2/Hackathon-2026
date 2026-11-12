@@ -1,4 +1,4 @@
-import { t } from './i18n.js?v=reassignment-filter-20261112-1';
+import { t } from './i18n.js?v=dynamic-categories-20261113-1';
 
 const systemTheme = matchMedia('(prefers-color-scheme: dark)');
 let preference = null;

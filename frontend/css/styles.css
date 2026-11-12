@@ -335,3 +335,13 @@ dialog::backdrop { background: var(--color-overlay); }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
 }
+
+.category-create { margin-block: 1.25rem; padding: 1rem; border: 1px solid var(--color-border); border-radius: var(--radius); }
+.category-create fieldset { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; min-width: 0; border: 0; padding: 0; margin: 0; }
+.category-create .field { min-width: 0; }
+.category-create input, .category-create select { width: 100%; min-width: 0; }
+.category-create .field-error { grid-column: 1 / -1; margin: 0; }
+.category-create .primary-button { justify-self: start; }
+.category-archive-filter { display: flex; align-items: center; gap: .75rem; min-height: 44px; margin-bottom: 1rem; }
+.category-archive-filter input { width: 1.25rem; height: 1.25rem; flex: 0 0 auto; }
+@media (max-width: 40rem) { .category-create fieldset { grid-template-columns: 1fr; } .category-create .primary-button { width: 100%; } }
