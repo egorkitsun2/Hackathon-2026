@@ -70,6 +70,7 @@ try {
       for (const [type,count] of [['problem',4],['suggestion',3],['complaint',4],['gratitude',3]]) {
         await page.locator('[data-language="ru"]').click();
         await page.locator('#ticket-type').selectOption(type);
+        await page.locator('#ticket-category').selectOption('general');
         const ru = await page.locator('#ticket-help-prompts li').allTextContents();
         assert.equal(ru.length,count); assert.ok(ru.every(text => text.length > 2 && text !== 'undefined'));
         await page.locator('[data-language="kk"]').click();
@@ -90,11 +91,11 @@ try {
   const creation = page.waitForRequest(request => new URL(request.url()).pathname === '/api/v1/tickets' && request.method() === 'POST');
   await page.locator('#send-ticket').click();
   const body = (await creation).postDataJSON();
-  assert.deepEqual(body,{type:'gratitude',title,description});
+  assert.deepEqual(body,{type:'gratitude',category:'general',title,description});
   await page.locator('#created-ticket-details').waitFor({state:'visible'});
   assert.equal(db.prepare('SELECT count(*) AS n FROM ticket_attachments').get().n,1);
   assert.deepEqual(errors,[]);
-  results.push({result:'PASS',checks:['keyboard disclosure','no automatic field fill','only type/title/description sent','existing attachment upload preserved']});
+  results.push({result:'PASS',checks:['keyboard disclosure','no automatic field fill','only type/category/title/description sent','existing attachment upload preserved']});
 } catch (error) {
   results.push({ step: 'failure', error: error.message });
   process.exitCode = 1;

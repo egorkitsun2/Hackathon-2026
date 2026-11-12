@@ -241,3 +241,29 @@ test('employee creation result is modal and native close erases its one-time pas
   h.get('create-user-panel').open = true; h.context.closeAccounts();
   assert.equal(h.get('create-user-panel').open, false);
 });
+
+
+test('manager list, creation and reset preserve the existing one-time password lifecycle', async () => {
+  const manager={...employee,id:7,role:'manager'};const reads=[];
+  const h=harness({getUsers:async(page,role)=>{reads.push([page,role]);return {data:[role==='manager'?manager:employee],pagination:{page:1,limit:20,total:1}};},createUser:async values=>{assert.equal(values.role,'manager');return {data:{user:manager,temporary_password:'manager-test-secret'}};},resetUserPassword:async()=>({data:{user:manager,temporary_password:'reset-manager-secret'}})});
+  h.context.openAccounts('users');await flush();
+  h.get('users-role-filter').value='manager';h.get('users-role-filter').events.change();await flush();
+  assert.equal(reads.at(-1)[1],'manager');
+  fillEmployee(h);h.get('user-role').value='manager';await h.submit('create-user-form');
+  assert.equal(h.get('temporary-password').textContent,'manager-test-secret');
+  h.get('close-user-created').events.click();await flush();assert.equal(h.get('temporary-password').textContent,'');
+  h.get('users-list').children[0].children.at(-2).events.click();
+  await h.get('confirm-reset-password').events.click();
+  assert.equal(h.get('reset-temporary-password').textContent,'reset-manager-secret');
+  h.get('close-reset-password').events.click();assert.equal(h.get('reset-temporary-password').textContent,'');
+  assert.equal(h.context.validateEmployee({...employee,role:'admin'})['user-role'],'roleInvalid');
+});
+
+
+test('lost creation response refreshes the selected creation role without retrying POST', async () => {
+  const reads=[];let writes=0;
+  const h=harness({getUsers:async(page,role)=>{reads.push(role);return {data:[],pagination:{page,limit:20,total:0}};},createUser:async()=>{writes++;throw new Error('NETWORK_ERROR');}});
+  h.context.openAccounts('users');await flush();fillEmployee(h);h.get('user-role').value='manager';
+  await h.submit('create-user-form');assert.equal(writes,1);assert.equal(reads.at(-1),'manager');
+  assert.equal(h.get('users-role-filter').value,'manager');assert.equal(h.get('temporary-password').textContent,'');
+});

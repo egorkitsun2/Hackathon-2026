@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 import vm from 'node:vm';
 
+const routingHelpers = (await readFile(new URL('../js/routing.js', import.meta.url), 'utf8')).split('let active =')[0].replace(/^import .*;\r?\n/gm, '').replaceAll('export ', '');
 const source = (await readFile(new URL('../js/admin.js', import.meta.url), 'utf8')).replace(/^import .*;\r?\n/gm, '').replaceAll('export ', '');
 const flush = () => new Promise(resolve => setImmediate(resolve));
 const ticket = { id: 124, type: 'problem', title: '<b>Literal title</b>', status: 'new', created_at: '2026-11-10T09:00:00.000Z', author: { full_name: 'Author', department: 'Warehouse', position: 'Employee' } };
@@ -20,8 +21,8 @@ function harness(getAdminTickets = async ({ page }) => response(page)) {
   });
   const get = selector => { if (!elements.has(selector)) elements.set(selector, element()); return elements.get(selector); };
   const document = { querySelector: get, createElement: element, documentElement: { lang: 'ru' } };
-  const context = vm.createContext({ document, getAdminTickets, getAdminStats: async () => ({ data: statsData }), Intl, t: key => `${document.documentElement.lang}:${key}` });
-  vm.runInContext(source, context);
+  const context = vm.createContext({ document, getAdminTickets, getManagers: async () => [], getManagerTickets: async () => response(), getAdminStats: async () => ({ data: statsData }), Intl, t: key => `${document.documentElement.lang}:${key}` });
+  vm.runInContext(routingHelpers + source, context);
   return { context, get, document };
 }
 
@@ -134,4 +135,45 @@ test('late stats cannot overwrite a later panel or reappear after logout', async
   h.context.openAdminQueue(user); h.context.closeAdminQueue(true);
   pending[2]({ data: statsData }); await flush();
   assert.equal(h.get('#admin-stats').children.length, 0);
+});
+
+
+test('queue returns to the last existing page after a status or assignment removes its last row', async () => {
+  let total = 21;
+  const calls = [];
+  const h = harness(async ({ page }) => {
+    calls.push(page);
+    return response(page, page === 2 && total === 20 ? [] : [ticket], total);
+  });
+  h.context.openAdminQueue(user); await flush();
+  h.get('#admin-next-page').events.click(); await flush();
+  assert.equal(calls.at(-1), 2);
+  h.context.closeAdminQueue(); total = 20;
+  h.context.openAdminQueue(user); await flush(); await flush();
+  assert.deepEqual(calls.slice(-2), [2, 1]);
+  assert.equal(h.get('#admin-ticket-rows').children.length, 1);
+  assert.equal(h.get('#admin-page-number').textContent, 'ru:page 1');
+});
+
+
+test('manager reuses the queue without administrator statistics or administrator requests', async () => {
+  let adminReads = 0, managerReads = 0;
+  const h = harness(async () => { adminReads++; return response(); });
+  h.context.openManagerQueue({id:5,role:'manager',full_name:'QA manager'},async () => { managerReads++; return response(); });
+  await flush();
+  assert.equal(managerReads,1);
+  assert.equal(adminReads,0);
+  assert.equal(h.get('#admin-stats-panel').hidden,true);
+  assert.equal(h.get('#admin-title').textContent,'ru:managerTitle');
+  assert.equal(h.get('#admin-ticket-rows').children[0].children[4].children[0].href,'#/manager/tickets/124');
+});
+
+test('manager default reader never falls back to administrator API', async () => {
+  let adminReads=0;
+  const h=harness(async()=>{adminReads++;return response();});
+  h.context.openManagerQueue({id:5,role:'manager',full_name:'QA manager'});
+  await flush();
+  assert.equal(adminReads,0);
+  assert.equal(h.get('#admin-queue-status').textContent,'');
+  assert.equal(h.get('#admin-ticket-rows').children.length,1);
 });

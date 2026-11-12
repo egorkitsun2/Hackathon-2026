@@ -105,6 +105,7 @@ try {
   await choose(['photo.png', 'portrait.jpg', 'document.pdf']); await imagesLoaded();
   await page.locator('#ticket-previews li').filter({ hasText: 'portrait.jpg' }).getByRole('button').click();
   await page.locator('#ticket-type').selectOption('problem');
+  await page.locator('#ticket-category').selectOption('general');
   await page.locator('#ticket-title').fill('QA preview attachments');
   await page.locator('#ticket-description').fill('Only remaining attachments must be sent.');
   await page.locator('#send-ticket').click();

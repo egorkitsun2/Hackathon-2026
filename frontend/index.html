@@ -6,9 +6,9 @@
   <meta name="color-scheme" content="light dark">
   <title>Голос команды</title>
   <link rel="icon" href="data:,">
-  <script src="js/theme-init.js?v=saved-previews-20261112-1"></script>
-  <link rel="stylesheet" href="css/styles.css?v=saved-previews-20261112-1">
-  <script type="module" src="js/app.js?v=session-restore-20261112-1"></script>
+  <script src="js/theme-init.js?v=routing-v05-20261112-1"></script>
+  <link rel="stylesheet" href="css/styles.css?v=routing-v05-20261112-1">
+  <script type="module" src="js/app.js?v=routing-v05-20261112-1"></script>
 </head>
 <body>
   <a id="skip-to-content" class="skip-link" href="#app" data-i18n="skipContent"></a>
@@ -31,7 +31,8 @@
     <nav id="workspace-nav" class="workspace-nav" data-i18n-label="workspaceNavigation" hidden>
       <a href="#/employee" data-nav-role="employee" data-nav-page="tickets" data-i18n="myTickets"></a>
       <a href="#/admin" data-nav-role="admin" data-nav-page="tickets" data-i18n="adminQueue"></a>
-      <a href="#/admin/users" data-nav-role="admin" data-nav-page="users" data-i18n="employees"></a>
+      <a href="#/admin/users" data-nav-role="admin" data-nav-page="users" data-i18n="usersManagement"></a>
+      <a href="#/manager" data-nav-role="manager" data-nav-page="tickets" data-i18n="managerQueue" hidden></a>
     </nav>
     <div id="session-loading" class="login-panel" role="status">
       <p class="muted" data-i18n="checkingSession">Проверка сессии…</p>
@@ -99,6 +100,17 @@
               </select>
               <p id="ticket-type-error" class="field-error" aria-live="polite" hidden></p>
             </div>
+            <div id="ticket-direction-field" class="field">
+              <label for="ticket-category" data-i18n="ticketDirection"></label>
+              <select id="ticket-category" name="category" required aria-describedby="ticket-category-hint ticket-category-error">
+                <option value="" data-i18n="chooseDirection"></option>
+                <option value="it" data-i18n="directionIT"></option>
+                <option value="procurement" data-i18n="directionPurchasing"></option>
+                <option value="general" data-i18n="directionGeneral"></option>
+              </select>
+              <p id="ticket-category-hint" class="hint" data-i18n="routingHint"></p>
+              <p id="ticket-category-error" class="field-error" aria-live="polite" hidden></p>
+            </div>
             <div class="field">
               <label for="ticket-title" data-i18n="ticketTitleLabel">Тема</label>
               <input id="ticket-title" name="title" type="text" required aria-describedby="ticket-title-advice ticket-title-hint ticket-title-counter ticket-title-error">
@@ -157,6 +169,10 @@
           <p id="detail-status" class="ticket-status"></p>
           <h3 data-i18n="ticketDescription">Описание</h3>
           <p id="detail-description" class="ticket-text"></p>
+          <dl id="detail-routing" class="routing-details" hidden>
+            <div><dt data-i18n="ticketDirection"></dt><dd id="detail-category"></dd></div>
+            <div><dt data-i18n="responsibleManager"></dt><dd id="detail-assignee"></dd></div>
+          </dl>
         </section>
         <section class="content-block" aria-labelledby="attachments-heading">
           <h2 id="attachments-heading" data-i18n="attachmentsTitle"></h2>
@@ -174,6 +190,20 @@
 
         </div>
         <aside class="detail-side-column">
+        <section id="ticket-assignment-panel" class="content-block" aria-labelledby="ticket-assignment-heading" hidden>
+          <h2 id="ticket-assignment-heading" data-i18n="reassignTicket"></h2>
+          <form id="ticket-assignment-form" novalidate>
+            <fieldset id="ticket-assignment-fields" class="ticket-fields">
+              <legend class="visually-hidden" data-i18n="reassignTicket"></legend>
+              <label for="ticket-assignee" data-i18n="responsibleManager"></label>
+              <select id="ticket-assignee" aria-describedby="ticket-assignee-error"></select>
+              <p id="ticket-assignee-error" class="field-error" aria-live="polite" hidden></p>
+              <button class="primary-button" type="submit" data-i18n="saveAssignment"></button>
+            </fieldset>
+          </form>
+          <p id="ticket-assignment-status" class="status" role="status"></p>
+          <button id="retry-ticket-managers" class="secondary-button" type="button" data-i18n="retry" hidden></button>
+        </section>
         <section id="detail-author-block" class="content-block" aria-labelledby="detail-author-heading" hidden>
           <h2 id="detail-author-heading" data-i18n="ticketAuthor">Автор обращения</h2>
           <p id="detail-author-name" class="employee-name"></p>
@@ -224,7 +254,7 @@
         <p id="admin-name" class="employee-name"></p>
         </div>
       </div>
-      <section class="content-block" aria-labelledby="admin-stats-heading">
+      <section id="admin-stats-panel" class="content-block" aria-labelledby="admin-stats-heading">
         <h2 id="admin-stats-heading" data-i18n="statsTitle"></h2>
         <p id="admin-stats-status" class="status" role="status"></p>
         <button id="retry-admin-stats" class="secondary-button" type="button" data-i18n="retry" hidden></button>
@@ -244,6 +274,10 @@
           </select>
         </div>
         </div>
+        <label id="admin-unassigned-filter-label" class="checkbox-field" hidden>
+          <input id="admin-unassigned-filter" type="checkbox">
+          <span data-i18n="onlyUnassigned"></span>
+        </label>
         <p id="admin-queue-status" class="status" role="status"></p>
         <button id="retry-admin-queue" class="secondary-button" type="button" data-i18n="retry" hidden>Повторить</button>
         <table id="admin-ticket-table" class="admin-ticket-table" hidden>
@@ -274,26 +308,43 @@
       </fieldset></form><p id="change-password-status" class="status" role="status"></p>
     </section>
     <section id="users-screen" class="employee-panel" aria-labelledby="users-title" hidden>
-      <div class="page-header"><div><h1 id="users-title" data-i18n="employees"></h1><p class="muted" data-i18n="usersSubtitle"></p></div></div>
+      <div class="page-header"><div><h1 id="users-title" data-i18n="usersManagement"></h1><p class="muted" data-i18n="usersSubtitle"></p></div></div>
       <details id="create-user-panel" class="content-block create-user-panel">
-        <summary data-i18n="createEmployee"></summary>
+        <summary data-i18n="createUser"></summary>
         <form id="create-user-form" novalidate><fieldset id="create-user-fields" class="ticket-fields">
-        <legend data-i18n="createEmployee"></legend>
+        <legend data-i18n="createUser"></legend>
+        <div id="create-user-role-field" class="field">
+          <label for="user-role" data-i18n="userRole"></label>
+          <select id="user-role" required aria-describedby="user-role-error">
+            <option value="employee" data-i18n="roleEmployee"></option>
+            <option value="manager" data-i18n="roleManager"></option>
+          </select>
+          <p id="user-role-error" class="field-error" aria-live="polite" hidden></p>
+        </div>
 <div class="field"><label for="user-full_name" data-i18n="fullName"></label><input id="user-full_name" type="text" autocomplete="off" required aria-describedby="user-full_name-error"><p id="user-full_name-error" class="field-error" aria-live="polite" hidden></p></div><div class="field"><label for="user-phone" data-i18n="phoneLabel"></label><input id="user-phone" type="tel" autocomplete="off" required aria-describedby="user-phone-error"><p id="user-phone-error" class="field-error" aria-live="polite" hidden></p></div><div class="field"><label for="user-department" data-i18n="department"></label><input id="user-department" type="text" autocomplete="off" required aria-describedby="user-department-error"><p id="user-department-error" class="field-error" aria-live="polite" hidden></p></div><div class="field"><label for="user-position" data-i18n="position"></label><input id="user-position" type="text" autocomplete="off" required aria-describedby="user-position-error"><p id="user-position-error" class="field-error" aria-live="polite" hidden></p></div>
-        <button class="primary-button" type="submit" data-i18n="createEmployee"></button>
+        <button class="primary-button" type="submit" data-i18n="createUser"></button>
         </fieldset></form><p id="create-user-status" class="status" role="status"></p>
       </details>
       <dialog id="user-result-dialog" class="result-dialog" aria-labelledby="user-created-title">
       <section id="user-created" class="content-block" aria-labelledby="user-created-title" hidden>
-        <h2 id="user-created-title" data-i18n="employeeCreated"></h2>
+        <h2 id="user-created-title" data-i18n="userCreated"></h2>
         <p id="created-user-phone"></p>
         <p data-i18n="temporaryPassword"></p><p id="temporary-password" class="temporary-password"></p>
         <p class="hint" data-i18n="temporaryPasswordHint"></p>
         <button id="close-user-created" class="secondary-button" type="button" data-i18n="closeResult"></button>
       </section>
       </dialog>
+      <section id="category-managers-panel" class="content-block" aria-labelledby="category-managers-title">
+        <h2 id="category-managers-title" data-i18n="directionManagers"></h2>
+        <p class="hint" data-i18n="directionManagersHint"></p>
+        <p id="category-managers-status" class="status" role="status"></p>
+        <button id="retry-category-managers" class="secondary-button" type="button" data-i18n="retry" hidden></button>
+        <div id="category-managers-list" class="routing-settings"></div>
+      </section>
       <section class="content-block" aria-labelledby="users-list-title">
         <h2 id="users-list-title" data-i18n="employeeListTitle"></h2>
+        <label for="users-role-filter" data-i18n="userRole"></label>
+        <select id="users-role-filter"><option value="employee" data-i18n="roleEmployee"></option><option value="manager" data-i18n="roleManager"></option></select>
         <p id="users-status" class="status" role="status"></p>
         <p id="users-action-status" class="status" role="status"></p>
         <button id="retry-users" class="secondary-button" type="button" data-i18n="retry" hidden></button>
