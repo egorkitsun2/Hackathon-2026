@@ -1,6 +1,6 @@
-import { createTicket, uploadAttachment, getTicket } from './api.js?v=admin-tabs-20261112-1';
-import { validateAttachment } from './attachment-validation.js?v=admin-tabs-20261112-1';
-import { t } from './i18n.js?v=admin-tabs-20261112-1';
+import { createTicket, uploadAttachment, getTicket } from './api.js?v=reassignment-filter-20261112-1';
+import { validateAttachment } from './attachment-validation.js?v=reassignment-filter-20261112-1';
+import { t } from './i18n.js?v=reassignment-filter-20261112-1';
 
 const form = document.querySelector('#new-ticket-form');
 const fields = document.querySelector('#ticket-fields');

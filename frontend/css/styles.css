@@ -243,6 +243,11 @@ input[type="file"]::file-selector-button { min-height: 2.5rem; margin-right: .75
 #users-screen .user-card { padding: 1rem; gap: .5rem; }
 .checkbox-field { display: flex; gap: .625rem; align-items: center; min-height: 2.75rem; margin-top: .75rem; cursor: pointer; }
 .checkbox-field input { width: 1.25rem; height: 1.25rem; margin: 0; accent-color: var(--color-primary); }
+.queue-flags { display: flex; flex-wrap: wrap; align-items: center; gap: .25rem 1.25rem; margin-top: .75rem; }
+.queue-flags .checkbox-field { margin: 0; }
+.reassignment-badge { max-width: 100%; margin-top: .625rem; white-space: normal; color: var(--color-status-review); background: var(--color-status-review-bg); }
+.admin-ticket-table tr[data-needs-reassignment="true"] { border-color: var(--color-status-review); }
+.admin-ticket-table tr[data-needs-reassignment="true"] > th { box-shadow: inset 3px 0 var(--color-status-review); padding-left: .875rem; }
 #retry-ticket-detail, #take-ticket { margin-top: 1rem; }
 .admin-filter { display: flex; align-items: center; gap: .75rem; }
 .admin-filter label { margin: 0; }

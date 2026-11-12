@@ -1,7 +1,7 @@
-import { validateAttachment } from './attachment-validation.js?v=admin-tabs-20261112-1';
-import { getTicket, updateTicketStatus, uploadAttachment, getAttachmentPreview, assignTicket, getManagers } from './api.js?v=admin-tabs-20261112-1';
-import { categoryLabel, managerLabel, fillManagerSelect, selectedManager } from './routing.js?v=admin-tabs-20261112-1';
-import { t } from './i18n.js?v=admin-tabs-20261112-1';
+import { validateAttachment } from './attachment-validation.js?v=reassignment-filter-20261112-1';
+import { getTicket, updateTicketStatus, uploadAttachment, getAttachmentPreview, assignTicket, getManagers } from './api.js?v=reassignment-filter-20261112-1';
+import { categoryLabel, managerLabel, fillManagerSelect, selectedManager } from './routing.js?v=reassignment-filter-20261112-1';
+import { t } from './i18n.js?v=reassignment-filter-20261112-1';
 
 const screen = document.querySelector('#ticket-detail-screen');
 const content = document.querySelector('#ticket-detail-content');

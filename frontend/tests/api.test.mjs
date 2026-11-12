@@ -285,3 +285,17 @@ test('manager assignment check uses existing rules then scans ticket pages inclu
     assert.ok(calls.every(url=>url.includes('/admin/')));
   }finally{globalThis.fetch=previous;}
 });
+
+
+test('reassignment filter sends exact boolean query, combines with current filters and preserves backend flags', async () => {
+  const previous=globalThis.fetch,urls=[];
+  globalThis.fetch=async url=>{urls.push(url);return Response.json({data:[{id:1,needs_reassignment:true},{id:2,needs_reassignment:false}],pagination:{page:1,limit:20,total:2}});};
+  try{
+    const result=await api.getAdminTickets({needs_reassignment:true,status:'in_review',unassigned:true,page:2});
+    assert.equal(urls[0],'/api/v1/admin/tickets?page=2&limit=20&status=in_review&unassigned=true&needs_reassignment=true');
+    assert.deepEqual(result.data.map(x=>x.needs_reassignment),[true,false]);
+    await api.getAdminTickets({needs_reassignment:false});assert.equal(urls[1],'/api/v1/admin/tickets?page=1&limit=20');
+    for(const value of ['true','false','',1,0,null])await assert.rejects(api.getAdminTickets({needs_reassignment:value}),/VALIDATION_ERROR/);
+    assert.equal(urls.length,2);
+  }finally{globalThis.fetch=previous;}
+});

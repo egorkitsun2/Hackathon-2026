@@ -177,3 +177,52 @@ test('manager default reader never falls back to administrator API', async () =>
   assert.equal(h.get('#admin-queue-status').textContent,'');
   assert.equal(h.get('#admin-ticket-rows').children.length,1);
 });
+
+
+test('only authoritative true flag produces a reassignment marker and localization keeps filter state', async () => {
+  const h=harness(async()=>response(1,[{...ticket,id:1,assigned_to:7,needs_reassignment:true},{...ticket,id:2,assigned_to:null,needs_reassignment:false},{...ticket,id:3,needs_reassignment:'true'}],3));
+  h.context.openAdminQueue(user);await flush();
+  const rows=h.get('#admin-ticket-rows').children;
+  assert.deepEqual(rows.map(x=>x.dataset.needsReassignment),['true','false','false']);
+  assert.equal(rows[0].children[0].children.find(x=>x.className==='ticket-status reassignment-badge').textContent,'ru:needsReassignmentBadge');
+  assert.equal(rows[1].children[0].children.some(x=>x.className==='ticket-status reassignment-badge'),false);
+  h.get('#admin-needs-reassignment-filter').checked=true;h.document.documentElement.lang='kk';h.context.renderAdminQueue();
+  assert.equal(h.get('#admin-needs-reassignment-filter').checked,true);
+  assert.equal(h.get('#admin-ticket-rows').children[0].children[0].children[2].textContent,'kk:needsReassignmentBadge');
+});
+
+test('new filter resets pagination, composes filters, preserves them after details and explains empty results', async () => {
+  const calls=[];let empty=false;
+  const h=harness(async options=>{calls.push({...options});return response(options.page,empty?[]:[ticket],empty?0:21);});
+  h.context.openAdminQueue(user);await flush();h.get('#admin-next-page').events.click();await flush();assert.equal(calls.at(-1).page,2);
+  h.get('#admin-needs-reassignment-filter').checked=true;h.get('#admin-needs-reassignment-filter').events.change();await flush();
+  assert.equal(calls.at(-1).page,1);assert.equal(calls.at(-1).needs_reassignment,true);
+  h.get('#admin-unassigned-filter').checked=true;h.get('#admin-unassigned-filter').events.change();await flush();
+  assert.equal(calls.at(-1).unassigned,true);assert.equal(calls.at(-1).needs_reassignment,true);
+  h.context.closeAdminQueue();h.context.openAdminQueue(user);await flush();assert.equal(calls.at(-1).needs_reassignment,true);
+  empty=true;h.get('#admin-needs-reassignment-filter').events.change();await flush();assert.equal(h.get('#admin-queue-status').textContent,'ru:noFilteredTickets');
+  h.context.closeAdminQueue(true);assert.equal(h.get('#admin-needs-reassignment-filter').checked,false);
+});
+
+test('manager never receives admin reassignment filters or markers, even with stale checked controls', async () => {
+  let sent;
+  const h=harness();h.get('#admin-needs-reassignment-filter').checked=true;h.get('#admin-unassigned-filter').checked=true;
+  h.context.openManagerQueue({id:7,role:'manager',full_name:'QA'},async options=>{sent=options;return response(1,[{...ticket,needs_reassignment:true}],1);});await flush();
+  assert.equal('needs_reassignment' in sent,false);assert.equal('unassigned' in sent,false);
+  assert.equal(h.get('#admin-needs-reassignment-filter-label').hidden,true);assert.equal(h.get('#admin-reassignment-hint').hidden,true);
+  assert.equal(h.get('#admin-ticket-rows').children[0].dataset.needsReassignment,'false');
+});
+
+
+test('late queue responses cannot override a newer reassignment filter or restore rows after logout', async () => {
+  const pending=[];
+  const h=harness(options=>new Promise(resolve=>pending.push({options,resolve})));
+  h.context.openAdminQueue(user);
+  h.get('#admin-needs-reassignment-filter').checked=true;h.get('#admin-needs-reassignment-filter').events.change();
+  pending[1].resolve(response(1,[{...ticket,id:2,needs_reassignment:true}],1));await flush();
+  pending[0].resolve(response(1,[{...ticket,id:1,needs_reassignment:false}],1));await flush();
+  assert.equal(h.get('#admin-ticket-rows').children[0].dataset.needsReassignment,'true');
+  assert.equal(h.get('#admin-ticket-rows').children[0].children[4].children[0].href,'#/admin/tickets/2');
+  h.get('#admin-needs-reassignment-filter').checked=false;h.get('#admin-needs-reassignment-filter').events.change();h.context.closeAdminQueue(true);
+  pending[2].resolve(response());await flush();assert.equal(h.get('#admin-ticket-rows').children.length,0);assert.equal(h.get('#admin-queue-flags').hidden,true);
+});

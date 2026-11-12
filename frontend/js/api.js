@@ -116,12 +116,12 @@ export async function getTicket(id) {
   return request(`/tickets/${id}`);
 }
 
-export async function getAdminTickets({ status = '', page = 1, limit = 20, unassigned = false } = {}) {
+export async function getAdminTickets({ status = '', page = 1, limit = 20, unassigned = false, needs_reassignment = false } = {}) {
   if (!['', 'new', 'in_review', 'resolved', 'rejected'].includes(status)
-    || !Number.isInteger(page) || page < 1 || !Number.isInteger(limit) || limit < 1 || limit > 50 || typeof unassigned !== 'boolean') {
+    || !Number.isInteger(page) || page < 1 || !Number.isInteger(limit) || limit < 1 || limit > 50 || typeof unassigned !== 'boolean' || typeof needs_reassignment !== 'boolean') {
     throw new Error('VALIDATION_ERROR');
   }
-  return request(`/admin/tickets?page=${page}&limit=${limit}${status ? `&status=${status}` : ''}${unassigned ? '&unassigned=true' : ''}`);
+  return request(`/admin/tickets?page=${page}&limit=${limit}${status ? `&status=${status}` : ''}${unassigned ? '&unassigned=true' : ''}${needs_reassignment ? '&needs_reassignment=true' : ''}`);
 }
 
 export async function updateTicketStatus(id, { status, comment }, role = 'admin') {

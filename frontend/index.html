@@ -6,9 +6,9 @@
   <meta name="color-scheme" content="light dark">
   <title>Голос команды</title>
   <link rel="icon" href="data:,">
-  <script src="js/theme-init.js?v=admin-tabs-20261112-1"></script>
-  <link rel="stylesheet" href="css/styles.css?v=admin-tabs-20261112-1">
-  <script type="module" src="js/app.js?v=admin-tabs-20261112-1"></script>
+  <script src="js/theme-init.js?v=reassignment-filter-20261112-1"></script>
+  <link rel="stylesheet" href="css/styles.css?v=reassignment-filter-20261112-1">
+  <script type="module" src="js/app.js?v=reassignment-filter-20261112-1"></script>
 </head>
 <body>
   <a id="skip-to-content" class="skip-link" href="#app" data-i18n="skipContent"></a>
@@ -275,10 +275,17 @@
           </select>
         </div>
         </div>
+        <div id="admin-queue-flags" class="queue-flags" hidden>
+        <label id="admin-needs-reassignment-filter-label" class="checkbox-field" hidden>
+          <input id="admin-needs-reassignment-filter" type="checkbox" aria-describedby="admin-reassignment-hint">
+          <span data-i18n="needsReassignment"></span>
+        </label>
         <label id="admin-unassigned-filter-label" class="checkbox-field" hidden>
           <input id="admin-unassigned-filter" type="checkbox">
           <span data-i18n="onlyUnassigned"></span>
         </label>
+        </div>
+        <p id="admin-reassignment-hint" class="hint" data-i18n="reassignmentFilterHint" hidden></p>
         <p id="admin-queue-status" class="status" role="status"></p>
         <button id="retry-admin-queue" class="secondary-button" type="button" data-i18n="retry" hidden>Повторить</button>
         <table id="admin-ticket-table" class="admin-ticket-table" hidden>

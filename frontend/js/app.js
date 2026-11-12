@@ -1,12 +1,12 @@
-import { openRouting, closeRouting, renderRouting } from './routing.js?v=admin-tabs-20261112-1';
-import { openAccounts, closeAccounts, renderAccounts } from './accounts.js?v=admin-tabs-20261112-1';
-import { initTheme, renderThemeToggle } from './theme.js?v=admin-tabs-20261112-1';
-import { login, logout, getMe, normalizePhone, invalidateSessionRequests } from './api.js?v=admin-tabs-20261112-1';
-import { setLanguage, t } from './i18n.js?v=admin-tabs-20261112-1';
-import { openEmployee, closeEmployee, renderEmployee } from './employee.js?v=admin-tabs-20261112-1';
-import { openNewTicket, closeNewTicket, resetNewTicket, renderNewTicket } from './new-ticket.js?v=admin-tabs-20261112-1';
-import { openTicketDetails, openManagerTicketDetails, closeTicketDetails, renderTicketDetails } from './ticket.js?v=admin-tabs-20261112-1';
-import { openAdminQueue, openManagerQueue, closeAdminQueue, renderAdminQueue } from './admin.js?v=admin-tabs-20261112-1';
+import { openRouting, closeRouting, renderRouting } from './routing.js?v=reassignment-filter-20261112-1';
+import { openAccounts, closeAccounts, renderAccounts } from './accounts.js?v=reassignment-filter-20261112-1';
+import { initTheme, renderThemeToggle } from './theme.js?v=reassignment-filter-20261112-1';
+import { login, logout, getMe, normalizePhone, invalidateSessionRequests } from './api.js?v=reassignment-filter-20261112-1';
+import { setLanguage, t } from './i18n.js?v=reassignment-filter-20261112-1';
+import { openEmployee, closeEmployee, renderEmployee } from './employee.js?v=reassignment-filter-20261112-1';
+import { openNewTicket, closeNewTicket, resetNewTicket, renderNewTicket } from './new-ticket.js?v=reassignment-filter-20261112-1';
+import { openTicketDetails, openManagerTicketDetails, closeTicketDetails, renderTicketDetails } from './ticket.js?v=reassignment-filter-20261112-1';
+import { openAdminQueue, openManagerQueue, closeAdminQueue, renderAdminQueue } from './admin.js?v=reassignment-filter-20261112-1';
 
 const form = document.querySelector('#login-form');
 const phone = document.querySelector('#phone');

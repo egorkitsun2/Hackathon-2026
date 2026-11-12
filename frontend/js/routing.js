@@ -1,5 +1,5 @@
-import { getRouting, getManagers, updateRouting } from './api.js?v=admin-tabs-20261112-1';
-import { t } from './i18n.js?v=admin-tabs-20261112-1';
+import { getRouting, getManagers, updateRouting } from './api.js?v=reassignment-filter-20261112-1';
+import { t } from './i18n.js?v=reassignment-filter-20261112-1';
 
 export const categoryLabel = code => t(({ it: 'directionIT', procurement: 'directionPurchasing', general: 'directionGeneral' })[code] ?? 'directionUnknown');
 export function managerLabel(id, managers = []) {
